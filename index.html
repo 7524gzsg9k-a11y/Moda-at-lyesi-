@@ -906,8 +906,10 @@ function placeAt(x,y,p,ang){
 }
 function strokePoint(rx,ry,rp,first){
   const B=curBrush();
-  if(!first){const k=ST.kind==='stamp'?1:1-S.smooth*.88;ST.sx+=(rx-ST.sx)*k;ST.sy+=(ry-ST.sy)*k;ST.sp+=(rp-ST.sp)*.5;}
-  else{ST.sx=rx;ST.sy=ry;ST.sp=rp;}
+  /* kalem: daha az gecikme (kalem hissi), basınç eğrisi daha doğal; parmak/fare: eski yumuşatma */
+  const pen=!!ST.pen,pc=pen?Math.pow(rp,.8):rp;
+  if(!first){const k=ST.kind==='stamp'?1:(pen?1-S.smooth*.5:1-S.smooth*.88);ST.sx+=(rx-ST.sx)*k;ST.sy+=(ry-ST.sy)*k;ST.sp+=(pc-ST.sp)*(pen?.8:.5);}
+  else{ST.sx=rx;ST.sy=ry;ST.sp=pc;}
   strokeTo(ST.sx,ST.sy,ST.sp,B);ST.rx=rx;ST.ry=ry;ST.rp=rp;
 }
 const TRIM_FOLLOW=['zipper','lace','ruffle','fringe','ribbon','piping','chain','stitch','zigzag','satin','crossst','pearl2'];
@@ -956,6 +958,16 @@ function sampleImage(doc,mode){
   if(mode==='layer')return doc.layers[doc.active].ctx.getImageData(0,0,doc.w,doc.h);
   const t=newCanvas(doc.w,doc.h),g=t.getContext('2d');drawDoc(g,doc,{bg:true});return g.getImageData(0,0,doc.w,doc.h);
 }
+/* çizgi boşluklarını kapat: koyu çizgiler kalınlaştırılır, küçük boşluklar kapanır; böylece boya komşu parçalara sızmaz */
+function closeBarriers(img,w,hh,R){
+  const d=img.data,N=w*hh,bar=new Uint8Array(N);
+  for(let p=0;p<N;p++){const k=p*4;if(d[k+3]>128&&(d[k]+d[k+1]+d[k+2])<330)bar[p]=1;}
+  const tmp=new Uint8Array(N),dil=new Uint8Array(N);
+  for(let y=0;y<hh;y++){const row=y*w;for(let x=0;x<w;x++){let on=0;const x0=Math.max(0,x-R),x1=Math.min(w-1,x+R);for(let i=x0;i<=x1;i++)if(bar[row+i]){on=1;break;}tmp[row+x]=on;}}
+  for(let y=0;y<hh;y++){const y0=Math.max(0,y-R),y1=Math.min(hh-1,y+R);for(let x=0;x<w;x++){let on=0;for(let j=y0;j<=y1;j++)if(tmp[j*w+x]){on=1;break;}dil[y*w+x]=on;}}
+  for(let p=0;p<N;p++)if(dil[p]){const k=p*4;d[k]=0;d[k+1]=0;d[k+2]=0;d[k+3]=255;}
+  return img;
+}
 function floodMask(img,w,hh,sx,sy,tol){
   const d=img.data,k0=(sy*w+sx)*4,r0=d[k0],g0=d[k0+1],b0=d[k0+2],a0=d[k0+3];
   const test=p=>{const k=p*4;return Math.abs(d[k]-r0)<=tol&&Math.abs(d[k+1]-g0)<=tol&&Math.abs(d[k+2]-b0)<=tol&&Math.abs(d[k+3]-a0)<=tol;};
@@ -981,7 +993,9 @@ function doFill(x,y){
   x=Math.floor(x);y=Math.floor(y);if(x<0||y<0||x>=doc.w||y>=doc.h)return;
   toast('Boyanıyor…',900);
   setTimeout(()=>{
-    const img=sampleImage(doc,S.fill.sample),mask=floodMask(img,doc.w,doc.h,x,y,S.fill.tol*1.5);
+    const img=sampleImage(doc,S.fill.sample);
+    {const kk=(y*doc.w+x)*4,dd=img.data;const seedDark=(dd[kk]+dd[kk+1]+dd[kk+2])<330;if(S.fill.close!==false&&!seedDark)closeBarriers(img,doc.w,doc.h,S.fill.closeR||3);}
+    const mask=floodMask(img,doc.w,doc.h,x,y,S.fill.tol*1.5);
     if(S.fill.grow)growMask(mask,doc.w,doc.h,S.fill.grow);
     let x0=1e9,y0=1e9,x1=-1,y1=-1;
     for(let j=0;j<doc.h;j++){const row=j*doc.w;for(let i=0;i<doc.w;i++)if(mask[row+i]){if(i<x0)x0=i;if(i>x1)x1=i;if(j<y0)y0=j;if(j>y1)y1=j;}}
@@ -1342,7 +1356,7 @@ cv.addEventListener('pointerdown',e=>{
     if(ST.active){ST.kindCancel=true;cancelTransient();}
     panPtr=null;gestureStart();e.preventDefault();return;}
   const p=hoverXY(e);
-  {const LVa=doc.layers[doc.active];if(LVa&&LVa.isVec&&S.tool!=='shape'&&S.tool!=='hand'&&!spaceDown&&e.button===0&&!navTouch(e)){S.tool='shape';renderTools();renderSide();}}
+  {const LVa=doc.layers[doc.active];if(LVa&&LVa.isVec&&!['shape','hand','fill','pick'].includes(S.tool)&&!spaceDown&&e.button===0&&!navTouch(e)){S.tool='shape';renderTools();renderSide();}}
   if(S.tool==='hand'||spaceDown||e.button===1||navTouch(e)){
     panPtr={id:e.pointerId,x:p.sx,y:p.sy,vx:doc.view.x,vy:doc.view.y};return;}
   if(e.button>0&&e.button!==5&&e.pointerType==='mouse'&&e.button===2)return;
@@ -1357,11 +1371,12 @@ cv.addEventListener('pointerdown',e=>{
     case'stamp':strokeStart(p.x,p.y,pr,e,'stamp');break;
     case'trim':strokeStart(p.x,p.y,pr,e,'trim');break;
     case'select':selDown(p,e);break;
-    case'fill':if(S.fill.live)liveBucket(doc,p.x,p.y);else doFill(p.x,p.y);break;
+    case'fill':{const LVf=doc.layers[doc.active];if(LVf&&LVf.isVec){const i=vecTopAt(LVf,p.x,p.y);if(i>=0){vecPaint(LVf,i);}else toast('Boyamak için bir parçanın içine tıkla.');break;}
+      if(S.fill.live)liveBucket(doc,p.x,p.y);else doFill(p.x,p.y);break;}
     case'pick':pickColor(p.x,p.y,false);ST.picking=true;break;
     case'shape':{const LV=doc.layers[doc.active];
       if(LV&&LV.isVec&&S.shape.mode==='free'){FREE={pts:[[p.x,p.y]]};break;}
-      if(LV&&LV.isVec&&!S.lockEdit&&VSEL>=0&&LV.vec[VSEL]&&LV.vec[VSEL].pts){const z=doc.view.z;const hb=vecCornerHit(LV.vec[VSEL],p.x,p.y,z);if(hb){vsDrag={L:LV,i:VSEL,c:hb,pts0:LV.vec[VSEL].pts.map(q=>q.slice()),bb:vecBox(LV.vec[VSEL])};break;}const tol=22/z;let k=-1,bd=tol;LV.vec[VSEL].pts.forEach((q,j)=>{const d=Math.hypot(q[0]-p.x,q[1]-p.y);if(d<bd){bd=d;k=j;}});if(k>=0){vnDrag={L:LV,i:VSEL,k};break;}}
+      if(LV&&LV.isVec&&!S.lockEdit&&VSEL>=0&&LV.vec[VSEL]&&LV.vec[VSEL].pts){const z=doc.view.z;const hb=vecCornerHit(LV.vec[VSEL],p.x,p.y,z);if(hb){vsDrag={L:LV,i:VSEL,c:hb,pts0:LV.vec[VSEL].pts.map(q=>q.slice()),bb:vecBox(LV.vec[VSEL])};break;}const tol=22/z;let bi=-1,k=-1,bd=tol;LV.vec.forEach((sh2,si)=>{if(!sh2.pts)return;sh2.pts.forEach((q,j)=>{const d=Math.hypot(q[0]-p.x,q[1]-p.y);if(d<bd){bd=d;bi=si;k=j;}});});if(k>=0){VSEL=bi;VSELS=[bi];vnDrag={L:LV,i:bi,k};renderSide();break;}}
       if(LV&&LV.isVec&&vecHit(LV,p.x,p.y)>=0){vecDown(LV,p,e);break;}
       if(LV&&LV.isVec&&!e.shiftKey)VSELS=[];
       SHAPE={x0:p.x,y0:p.y,x1:p.x,y1:p.y,shift:e.shiftKey};break;}
@@ -2717,12 +2732,145 @@ function drawNodeHandles(g,doc){
     g.beginPath();g.arc(q[0],q[1],6/z,0,6.2832);g.fill();g.stroke();}
   g.restore();
 }
+function vecContains(s,x,y){
+  if(s.kind==='rect')return x>=s.x&&x<=s.x+s.w&&y>=s.y&&y<=s.y+s.h;
+  if(s.kind==='ellipse'){const cx=s.x+s.w/2,cy=s.y+s.h/2,rx=Math.abs(s.w/2),ry=Math.abs(s.h/2);return rx>0&&ry>0&&((x-cx)/rx)**2+((y-cy)/ry)**2<=1;}
+  const rings=s.rings||(s.pts&&(s.kind==='poly')?[s.pts]:null);if(!rings)return false;
+  let inside=false;for(const r of rings){for(let i=0,j=r.length-1;i<r.length;j=i++){const[xi,yi]=r[i],[xj,yj]=r[j];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))inside=!inside;}}
+  return inside;
+}
+/* tıklanan noktada birden çok parça varsa en KÜÇÜK (en dar) parçayı seç: iç parça (etek, yaka) boyanır, dıştaki gövde değil */
+function vecTopAt(L,x,y){let best=-1,ba=Infinity;for(let i=L.vec.length-1;i>=0;i--){const sh=L.vec[i];if(!vecContains(sh,x,y))continue;const[x0,y0,x1,y1]=vecBox(sh);const ar=(x1-x0)*(y1-y0);if(ar<ba){ba=ar;best=i;}}return best;}
+function fabDesc(){const a=S.pat.active;if(!a)return null;return {active:JSON.parse(JSON.stringify(a)),c1:S.pat.c1,c2:S.pat.c2,c3:S.pat.c3,rep:S.pat.fillRepeat,fg:S.fg};}
+var VFABCACHE={};
+function fabCanvasFor(d){
+  const key=JSON.stringify(d);if(VFABCACHE[key])return VFABCACHE[key];
+  let tile=null;const a=d.active;
+  try{
+    if(a.kind==='preset'){const def=PRESETS.find(p=>p.id===a.id);if(def)tile=makePresetTile(a.id,d.c1,d.c2,d.c3,def.s*2);}
+    else if(a.kind==='fabric')tile=makeFabricTile(a.id,d.fg,256);
+    else tile=PATCACHE[a.id]||null;
+    if(tile)tile=repeatUnit(tile,d.rep);
+  }catch(e){tile=null;}
+  if(tile)VFABCACHE[key]=tile;
+  return tile;
+}
+function vecFabScale(L,idx,f){
+  idx.forEach(i=>{const sh=L.vec[i];if(!sh||!sh.fab)return;sh.fab.scale=Math.max(.1,Math.min(6,(sh.fab.scale||1)*f));});
+  vecRender(L);invalidate();markDirty();
+}
+function vecFabRot(L,idx,deg){
+  idx.forEach(i=>{const sh=L.vec[i];if(!sh||!sh.fab)return;sh.fab.rot=((sh.fab.rot||0)+deg)%360;});
+  vecRender(L);invalidate();markDirty();
+}
+/* mankenin dış çizgisi (ön görünüm) doküman koordinatlarında */
+function mannOutline(doc){
+  ensureGeoms(doc);const G=doc.figGeoms[0];const g=G.male?'erkek':'kadin';
+  const sv=SIL_TPL[g]&&SIL_TPL[g].front;if(!sv||!sv.pts||sv.pts.length<3)return null;
+  return sv.pts.map(q=>G.px(G.T(q[0],q[1])));
+}
+/* seçili parçaların noktalarını mankenin dış çizgisine yapıştır (radius içindeyse) */
+function vecSnapToMann(L,idx,radius){
+  const doc=D();const ol=mannOutline(doc);if(!ol){toast('Manken çizgisi bulunamadı.');return 0;}
+  let n=0;
+  idx.forEach(i=>{const sh=L.vec[i];if(!sh||!sh.pts)return;
+    sh.pts=sh.pts.map(q=>{let best=null,bd=radius;for(const o of ol){const d=Math.hypot(o[0]-q[0],o[1]-q[1]);if(d<bd){bd=d;best=o;}}if(best){n++;return[best[0],best[1]];}return q;});});
+  vecRender(L);invalidate();markDirty();return n;
+}
+function vecSetFabric(L,idx,d){
+  idx.forEach(i=>{const sh=L.vec[i];if(!sh)return;if(d){sh.fab=d;sh.fill=null;}else{sh.fab=null;sh.fill=S.fg;}});
+  vecRender(L);renderSide();invalidate();markDirty();
+}
+function vecPaint(L,i){
+  const d=fabDesc();vecSetFabric(L,[i],d);VSEL=i;VSELS=[i];
+  toast('Parça boyandı'+(d?' ('+d.active.kind+' kumaş)':'')+'.');
+}
+
+/* kalemle çizilen raster katmanı otomatik parçalara ayır: koyu çizgilerle sınırlanan bölgeler -> gerçek kontur -> vektör parça */
+function rdpSimplify(pts,eps){
+  if(pts.length<3)return pts;
+  const keep=new Uint8Array(pts.length);keep[0]=1;keep[pts.length-1]=1;
+  const st=[[0,pts.length-1]];
+  while(st.length){const[a,b]=st.pop();let md=0,mi=-1;const[ax,ay]=pts[a],[bx,by]=pts[b];const dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy||1;
+    for(let i=a+1;i<b;i++){const[px,py]=pts[i];const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/L2));const qx=ax+t*dx,qy=ay+t*dy;const d=Math.hypot(px-qx,py-qy);if(d>md){md=d;mi=i;}}
+    if(md>eps&&mi>=0){keep[mi]=1;st.push([a,mi],[mi,b]);}}
+  return pts.filter((_,i)=>keep[i]);
+}
+/* Moore komşu izleme: bir bölgenin dış konturu (piksel merkezleri) */
+function traceOuter(inside,w,h,start){
+  const dirs=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+  const sx=start%w,sy=(start-sx)/w;let cx=sx,cy=sy,b=4;const out=[[cx,cy]];
+  for(let guard=0;guard<4*w*h;guard++){
+    let found=-1,lastBg=b;
+    for(let i=1;i<=8;i++){const k=(b+i)%8,nx=cx+dirs[k][0],ny=cy+dirs[k][1];if(nx>=0&&ny>=0&&nx<w&&ny<h&&inside(nx,ny)){found=k;break;}lastBg=k;}
+    if(found<0)break;
+    const ox=cx,oy=cy;cx+=dirs[found][0];cy+=dirs[found][1];
+    const bx=ox+dirs[lastBg][0]-cx,by=oy+dirs[lastBg][1]-cy;
+    b=0;for(let k=0;k<8;k++)if(dirs[k][0]===bx&&dirs[k][1]===by){b=k;break;}
+    if(cx===sx&&cy===sy)break;
+    out.push([cx,cy]);
+  }
+  return out;
+}
+function layerToVec(doc,L){
+  const w=doc.w,hh=doc.h,N=w*hh;
+  const orig=L.ctx.getImageData(0,0,w,hh).data;
+  const img=sampleImage(doc,'layer');
+  closeBarriers(img,w,hh,S.fill.closeR||3);
+  const d=img.data;
+  const bar=new Uint8Array(N);
+  for(let p=0;p<N;p++){const k=p*4;if(d[k+3]>128&&(d[k]+d[k+1]+d[k+2])<330)bar[p]=1;}
+  const lab=new Int32Array(N).fill(-1),comps=[],qu=new Int32Array(N);
+  for(let i=0;i<N;i++){
+    if(bar[i]||lab[i]>=0)continue;
+    const k=comps.length;let qh=0,qt=0;qu[qt++]=i;lab[i]=k;let minI=i;
+    while(qh<qt){const v=qu[qh++];if(v<minI)minI=v;const x=v%w,y=(v-x)/w;
+      if(x>0&&!bar[v-1]&&lab[v-1]<0){lab[v-1]=k;qu[qt++]=v-1;}
+      if(x<w-1&&!bar[v+1]&&lab[v+1]<0){lab[v+1]=k;qu[qt++]=v+1;}
+      if(y>0&&!bar[v-w]&&lab[v-w]<0){lab[v-w]=k;qu[qt++]=v-w;}
+      if(y<hh-1&&!bar[v+w]&&lab[v+w]<0){lab[v+w]=k;qu[qt++]=v+w;}}
+    comps.push({area:qt,start:minI,pix:Array.from(qu.subarray(0,qt))});
+  }
+  const shapes=[];
+  for(let k=0;k<comps.length;k++){
+    const c=comps[k];
+    if(c.area<N*.001||c.area>N*.5)continue;
+    let touch=false,r=0,g=0,b=0;
+    for(const v of c.pix){const x=v%w,y=(v-x)/w;if(x===0||y===0||x===w-1||y===hh-1){touch=true;break;}const kk=v*4;r+=orig[kk];g+=orig[kk+1];b+=orig[kk+2];}
+    if(touch)continue;
+    const cnt=c.area;
+    const contour=traceOuter((x,y)=>lab[y*w+x]===k,w,hh,c.start);
+    if(contour.length<4)continue;
+    const pts=rdpSimplify(contour,1.2).slice(0,200);
+    if(pts.length<3)continue;
+    shapes.push({kind:'poly',pts,fill:'rgb('+Math.round(r/cnt)+','+Math.round(g/cnt)+','+Math.round(b/cnt)+')',stroke:null,sw:1});
+  }
+  return shapes;
+}
+function rasterToParts(){
+  const doc=D();const L=doc.layers[doc.active];
+  if(!L||L.isVec){toast('Kalem çizimi olan bir katman seç.');return;}
+  toast('Parçalara ayrılıyor…',1200);
+  setTimeout(()=>{
+    const shapes=layerToVec(doc,L);
+    if(!shapes.length){toast('Kapalı bölge bulunamadı. Çizgileri kapatıp tekrar dene.');return;}
+    const idx=doc.active;
+    addVecLayer();const V=D().layers[D().active];
+    V.name=(L.name||'Çizim')+' (parçalar)';V.vec=shapes;VSEL=0;VSELS=[0];S.tool='shape';
+    L.visible=false;
+    vecRender(V);renderTools();renderSide();invalidate();markDirty();
+    toast(shapes.length+' parça oluşturuldu. Her parçaya tıklayıp kumaş ya da renk verebilirsin. Asıl çizim gizlendi.');
+  },30);
+}
 function drawVecNodes(g,doc){
   const L=doc.layers[doc.active];if(!L||!L.isVec||VSEL<0||!L.vec[VSEL])return;const sh=L.vec[VSEL];if(!sh||!sh.pts)return;
   const z=doc.view.z;const[x0,y0,x1,y1]=vecBox(sh);g.save();g.lineWidth=1/z;g.setLineDash([4/z,3/z]);g.strokeStyle='#2563eb';g.strokeRect(x0,y0,x1-x0,y1-y0);g.setLineDash([]);
   g.lineWidth=1.5/z;g.fillStyle='#ffffff';
   for(const[cx,cy]of[[x0,y0],[x1,y0],[x0,y1],[x1,y1]]){g.beginPath();g.rect(cx-4.5/z,cy-4.5/z,9/z,9/z);g.fill();g.stroke();}
-  for(const q of sh.pts){g.beginPath();g.arc(q[0],q[1],5/z,0,6.2832);g.fill();g.stroke();}
+  g.restore();
+  g.save();g.lineWidth=1.2/z;g.fillStyle='#ffffff';g.strokeStyle='#1e3a8a';
+  L.vec.forEach((o,oi)=>{if(!o.pts||oi===VSEL)return;o.pts.forEach(q=>{g.beginPath();g.arc(q[0],q[1],3.5/z,0,6.2832);g.fill();g.stroke();});});
+  sh.pts.forEach(q=>{g.beginPath();g.arc(q[0],q[1],5/z,0,6.2832);g.fill();g.stroke();});
   g.restore();
 }
 function drawFitOverlay(g,doc){
@@ -3053,7 +3201,62 @@ function trimThumb(t){
   }catch(e){}
   return c;
 }
+
+/* ---- Aksesuar: atkı, bere, fular, gözlük, şapka, saat, kolye… manken üzerine vektör olarak eklenir ---- */
+const ACC_GROUPS=[
+  ['Kışlık',[['atki_kalin','Atkı (kalın)'],['atki_ince','Atkı (ince)'],['bere','Bere'],['bere_pompon','Bere (ponpon)'],['eldiven','Eldiven'],['fular','Fular']]],
+  ['Yazlık',[['gunes_sapka','Güneş şapkası'],['hasir_sapka','Hasır şapka'],['gunes_gozlugu','Güneş gözlüğü'],['sal','Yazlık şal'],['basortusu','Başörtüsü']]],
+  ['Gözlük & takı',[['gozluk','Gözlük'],['kolye','Kolye'],['kolye_uzun','Uzun kolye'],['kupe','Küpe'],['saat','Saat']]]
+];
+function accPolyFromEll(cx,cy,rx,ry,n){const o=[];for(let i=0;i<n;i++){const a=Math.PI*2*i/n;o.push([cx+Math.cos(a)*rx,cy+Math.sin(a)*ry]);}return o;}
+function accShapes(id,G,col){
+  const P=(x,y)=>G.px(G.T(x,y));
+  const pl=(list,fill,stroke,sw)=>({kind:'poly',pts:list.map(q=>P(q[0],q[1])),fill:fill||null,stroke:stroke||null,sw:sw||1.5});
+  const ln=(list,stroke,sw)=>({kind:'line',pts:list.map(q=>P(q[0],q[1])),fill:null,stroke:stroke,sw:sw||2});
+  const dk=hexShade(col,-.3),lt=hexShade(col,.25);
+  const arc=(x0,x1,yTop,sag,n)=>{const o=[];for(let i=0;i<=n;i++){const x=x0+(x1-x0)*i/n;const t=(x-(x0+x1)/2)/((x1-x0)/2);o.push([x,yTop+sag*(1-t*t)]);}return o;};
+  const cr=(cx,cy,rx,ry,fill,stroke)=>({kind:'poly',pts:accPolyFromEll(0,0,1,1,24).map(([a,b])=>P(cx+a*rx,cy+b*ry)),fill:fill||null,stroke:stroke||null,sw:1.5});
+  const hand=s=>{const A=G.arms[s];return A?A.Hd:null;};
+  switch(id){
+    case'atki_kalin':return[pl([[-.52,1.28],[.52,1.28],[.6,1.5],[.42,1.62],[-.42,1.62],[-.6,1.5]],col,dk),
+      pl([[.25,1.55],[.6,1.6],[.78,2.4],[.46,2.56],[.22,2.2]],col,dk),
+      ln([[-.5,1.38],[.5,1.38]],dk,1.5),ln([[-.55,1.5],[.55,1.5]],dk,1.5)];
+    case'atki_ince':return[pl([[-.45,1.3],[.45,1.3],[.5,1.4],[-.5,1.4]],col,dk),pl([[.2,1.38],[.38,1.4],[.55,2.1],[.4,2.12]],col,dk)];
+    case'bere':return[pl([[-.46,.55],[-.44,.22],[-.3,0],[0,-.08],[.3,0],[.44,.22],[.46,.55]],col,dk),pl([[-.5,.5],[.5,.5],[.5,.7],[-.5,.7]],dk,dk)];
+    case'bere_pompon':return[pl([[-.46,.55],[-.44,.22],[-.3,0],[0,-.08],[.3,0],[.44,.22],[.46,.55]],col,dk),pl([[-.5,.5],[.5,.5],[.5,.7],[-.5,.7]],dk,dk),cr(0,-.2,.14,.14,lt,dk)];
+    case'eldiven':{const a=hand(1),b=hand(0);const o=[];for(const h of[a,b]){if(!h)continue;const[x,y]=G.px(h);o.push({kind:'poly',pts:accPolyFromEll(x,y,G.u*.22,G.u*.28,18),fill:col,stroke:dk,sw:1.5});}return o;}
+    case'fular':return[pl([[-.8,1.5],[.8,1.5],[.45,1.95],[0,2.45],[-.45,1.95]],col,dk)];
+    case'basortusu':return[pl([[-.5,.4],[-.4,0],[0,-.1],[.4,0],[.5,.4],[.55,1],[.2,1.5],[0,1.1],[-.2,1.5],[-.55,1]],col,dk)];
+    case'gunes_sapka':return[cr(0,.15,.75,.14,dk),pl([[-.42,.15],[-.36,-.12],[0,-.2],[.36,-.12],[.42,.15]],col,dk)];
+    case'hasir_sapka':return[cr(0,.18,.85,.16,'#d9b77e',dk),pl([[-.42,.18],[-.36,-.12],[0,-.2],[.36,-.12],[.42,.18]],'#e6c892',dk)];
+    case'gunes_gozlugu':return[cr(-.2,.5,.17,.11,'#1f2328',dk),cr(.2,.5,.17,.11,'#1f2328',dk),ln([[-.03,.48],[.03,.48]],dk,2),ln([[-.37,.48],[-.44,.44]],dk,2)];
+    case'gozluk':return[cr(-.2,.5,.17,.11,null,dk),cr(.2,.5,.17,.11,null,dk),ln([[-.03,.48],[.03,.48]],dk,2),ln([[-.37,.48],[-.44,.44]],dk,2),ln([[.37,.48],[.44,.44]],dk,2)];
+    case'sal':return[pl([[-.9,1.55],[.9,1.55],[.75,1.7],[0,1.92],[-.75,1.7]],col,dk)];
+    case'kolye':return[ln(arc(-.5,.5,1.36,.26,24),dk,2),cr(0,1.64,.07,.09,col,dk)];
+    case'kolye_uzun':return[ln(arc(-.5,.5,1.36,.9,30),dk,2),cr(0,2.26,.08,.1,col,dk)];
+    case'kupe':return[cr(-.44,.62,.05,.05,col,dk),cr(.44,.62,.05,.05,col,dk)];
+    case'saat':{const w=G.arms[1]?G.arms[1].W:null;if(!w)return[];const[x,y]=G.px(w);const r=G.u*.1;return[{kind:'rect',x:x-r,y:y-r*.8,w:r*2,h:r*1.6,fill:'#e7e3dc',stroke:dk,sw:1.5},{kind:'ellipse',x:x-r*.45,y:y-r*.45,w:r*.9,h:r*.9,fill:null,stroke:dk,sw:1}];}
+    default:return[];
+  }
+}
+function addAccessory(id,name){
+  const doc=D();if(!doc)return;ensureGeoms(doc);
+  const G=doc.figGeoms[0];const col=S.fg;
+  const shapes=accShapes(id,G,col);
+  if(!shapes.length){toast('Bu aksesuar bu manekende oluşturulamadı.');return;}
+  addVecLayer();const LV=D().layers[D().active];if(!LV)return;
+  LV.name=name;LV.vec=shapes;VSEL=0;VSELS=[0];S.tool='shape';
+  vecRender(LV);renderTools();renderSide();invalidate();markDirty();
+  toast(name+' eklendi. Noktalarından ve ölçeğinden ayarlayabilirsin.');
+}
+function tabAccessory(body){
+  ACC_GROUPS.forEach(([g,items])=>{
+    body.append(sec(g,h('div',{class:'cards',style:'grid-template-columns:repeat(2,1fr)'},items.map(([id,n])=>h('button',{class:'card',style:'min-height:44px;font-size:13px',onclick:()=>addAccessory(id,n)},n)))));
+  });
+  body.append(h('div',{class:'note'},'Aksesuarlar manken üzerinde ayrı vektör katmanı olarak eklenir. Renk olarak ana rengi kullanır; noktalarıyla yerini ve şeklini değiştirebilirsin.'));
+}
 function tabTrim(body){
+  tabAccessory(body);
   const T=S.trim;
   TRIM_CATS.forEach(cat=>{
     const cards=h('div',{class:'cards'});
@@ -3381,6 +3584,8 @@ function tabTool(body){
       S.fill.live?h('div',{class:'note'},'Canlı boya: çizgiler (tüm görünür katmanlar) bölge sınırını belirler. Boyanmış bölgeye tekrar tıklayınca yeni renkle yeniden boyanır. Boyalar "Canlı boya" katmanında tutulur.'):null,
       slider('Eşik',0,100,1,S.fill.tol,v=>S.fill.tol=v,v=>v),
       slider('Kenar payı',0,8,1,S.fill.grow,v=>S.fill.grow=v,v=>v+' px'),
+      toggleRow('Çizgi boşluklarını kapat (sızmayı önler)',S.fill.close!==false,v=>{S.fill.close=v;renderSide();}),
+      S.fill.close!==false?slider('Kapatma gücü',1,8,1,S.fill.closeR||3,v=>S.fill.closeR=v,v=>v+' px'):null,
       S.fill.src==='gradient'?slider('Gradyan açısı',0,360,5,S.fill.angle,v=>S.fill.angle=v,v=>v+'°'):null,
       S.fill.src==='gradient'?h('div',{class:'note'},'Ana renkten ikincil renge geçer.'):null,
       S.fill.src==='pattern'?patFillControls():null,
@@ -3557,11 +3762,12 @@ function vecOverlay(g,L){g.save();g.setLineDash([4,3]);g.strokeStyle='#1e88e5';g
   for(const i of VSELS){const s=L.vec[i];if(!s)continue;const[x0,y0,x1,y1]=vecBBox(s);g.strokeRect(x0-2,y0-2,x1-x0+4,y1-y0+4);}
   g.restore();}
 function vecDraw(g,s){if(s.kind==='pf'){vecDrawPF(g,s);return;}g.save();g.beginPath();
+  let fabPat=null;if(s.fab){const pc=fabCanvasFor(s.fab);if(pc){fabPat=g.createPattern(pc,'repeat');const sc=s.fab.scale||1,ro=(s.fab.rot||0)*Math.PI/180;if(fabPat&&fabPat.setTransform)fabPat.setTransform(new DOMMatrix().rotate(ro*180/Math.PI).scale(sc));}}
   if(s.kind==='rect')g.rect(s.x,s.y,s.w,s.h);
   else if(s.kind==='ellipse')g.ellipse(s.x+s.w/2,s.y+s.h/2,Math.abs(s.w/2),Math.abs(s.h/2),0,0,6.2832);
   else if(s.rings){s.rings.forEach(r=>{r.forEach((p,i)=>i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1]));g.closePath();});}
   else if(s.kind==='poly'||s.kind==='line'){s.pts.forEach((p,i)=>i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1]));if(s.kind==='poly')g.closePath();}
-  if(s.fill){g.fillStyle=s.fill;g.fill(s.rings?'evenodd':'nonzero');}
+  if(fabPat||s.fill){g.fillStyle=fabPat||s.fill;g.fill(s.rings?'evenodd':'nonzero');}
   if(s.stroke){g.strokeStyle=s.stroke;g.lineWidth=s.sw||2;g.lineJoin='round';g.stroke();}
   g.restore();}
 function vecRender(L){if(!L||!L.canvas)return;L.ctx.clearRect(0,0,L.canvas.width,L.canvas.height);(L.vec||[]).forEach(s=>vecDraw(L.ctx,s));}
@@ -3672,9 +3878,9 @@ function addTul(){
 function addVecLayer(){addLayer('Vektör '+(D().layers.length+1));const L=D().layers[D().active];if(L){L.isVec=true;L.vec=[];}renderSide();}
 function vecPanel(){
   const doc=D(),L=doc.layers[doc.active];
-  if(!L||!L.isVec)return h('div',null,h('div',{class:'btnrow'},h('button',{class:'ibtn pri',onclick:bosCizim},'Boş kıyafet çiz (manken gerekmez)'),h('button',{class:'ibtn',onclick:addVecLayer},'Boş vektör katmanı')),h('div',{class:'note'},'Serbest çizim: tuvalde sürükleyerek çizersin. Çizdiğin şekil noktalarıyla düzenlenir, ölçeklenir, ekleme ve çıkarma yapılabilir. Hazır olunca kalıp olarak kaydedip başka mankenlerde de kullanabilirsin.'),kalipBolumu());
+  if(!L||!L.isVec)return h('div',null,h('div',{class:'btnrow'},h('button',{class:'ibtn pri',onclick:bosCizim},'Boş kıyafet çiz (manken gerekmez)'),h('button',{class:'ibtn',onclick:addVecLayer},'Boş vektör katmanı'),L&&!L.isVec?h('button',{class:'ibtn',onclick:rasterToParts},'Çizimi parçalara ayır'):null),h('div',{class:'note'},'Serbest çizim: tuvalde sürükleyerek çizersin. Çizdiğin şekil noktalarıyla düzenlenir, ölçeklenir, ekleme ve çıkarma yapılabilir. Hazır olunca kalıp olarak kaydedip başka mankenlerde de kullanabilirsin.'),kalipBolumu());
   const list=L.vec||[];
-  const vecBtns=h('div',{class:'btnrow'},h('button',{class:'ibtn',onclick:()=>addTul()},'Tül ekle'),h('button',{class:'ibtn',onclick:()=>{S.tool='shape';S.shape.mode='free';renderSide();renderTools();}},'Serbest çiz'),h('button',{class:'ibtn',onclick:kalipKaydet},'Kalıp olarak kaydet'),h('button',{class:'ibtn'+(S.lockEdit?' pri':''),'aria-pressed':String(!!S.lockEdit),onclick:()=>{S.lockEdit=!S.lockEdit;renderSide();}},S.lockEdit?'🔒 Kilitli (taşınmaz)':'🔓 Kilit kapalı'));
+  const vecBtns=h('div',{class:'btnrow'},h('button',{class:'ibtn',onclick:()=>addTul()},'Tül ekle'),h('button',{class:'ibtn',onclick:()=>{S.tool='shape';S.shape.mode='free';renderSide();renderTools();}},'Serbest çiz'),h('button',{class:'ibtn',onclick:kalipKaydet},'Kalıp olarak kaydet'),h('button',{class:'ibtn',onclick:()=>{const d=fabDesc();if(!d){toast('Önce Kumaş sekmesinden bir kumaş seç.');return;}if(!VSELS.length){toast('Önce bir parça seç.');return;}vecSetFabric(L,VSELS,d);toast('Kumaş seçili parçalara verildi.');}},'Kumaşı seçili parçaya ver'),h('button',{class:'ibtn',onclick:()=>{const d=fabDesc();if(!d){toast('Önce Kumaş sekmesinden bir kumaş seç.');return;}vecSetFabric(L,L.vec.map((_,i)=>i),d);toast('Kumaş tüm parçalara verildi.');}},'Kumaşı tüm parçalara ver'),h('button',{class:'ibtn',onclick:()=>{if(!VSELS.length){toast('Önce bir parça seç.');return;}vecSetFabric(L,VSELS,null);toast('Seçili parçaların kumaşı kaldırıldı.');}},'Kumaşı kaldır'),h('button',{class:'ibtn',onclick:()=>{const ids=VSELS.length?VSELS:L.vec.map((_,i)=>i);vecFabScale(L,ids,.8);toast('Desen küçültüldü.');}},'Desen küçült'),h('button',{class:'ibtn',onclick:()=>{const ids=VSELS.length?VSELS:L.vec.map((_,i)=>i);vecFabScale(L,ids,1.25);toast('Desen büyütüldü.');}},'Desen büyüt'),h('button',{class:'ibtn',onclick:()=>{const ids=VSELS.length?VSELS:L.vec.map((_,i)=>i);vecFabRot(L,ids,45);}},'Desen döndür 45°'),h('button',{class:'ibtn',onclick:()=>{const ids=VSELS.length?VSELS:L.vec.map((_,i)=>i);const n=vecSnapToMann(L,ids,60);toast(n+' nokta manken çizgisine yapıştırıldı.');}},'Noktaları mankene yapıştır'),h('button',{class:'ibtn'+(S.lockEdit?' pri':''),'aria-pressed':String(!!S.lockEdit),onclick:()=>{S.lockEdit=!S.lockEdit;renderSide();}},S.lockEdit?'🔒 Kilitli (taşınmaz)':'🔓 Kilit kapalı'));
   const kindName={rect:'Dikdörtgen',ellipse:'Elips',poly:'Üçgen',line:'Çizgi',pf:'Bileşik'};
   const rows=list.map((s,i)=>h('div',{class:'row'},h('label',null,(i+1)+'. '+(s.rings?'Genişletilmiş':(kindName[s.kind]||s.kind))),
     h('button',{class:'ibtn',onclick:e=>{vecPick(i,e.shiftKey);renderSide();}},VSELS.includes(i)?'Seçili':'Seç'),
@@ -4321,8 +4527,29 @@ async function useLibPattern(rec){
   S.pat.active={kind:'lib',id:rec.id,name:rec.name};S.pat.fillRepeat=rec.repeat||'straight';
   S.fill.src='pattern';toast('"'+rec.name+'" seçildi. Boya aracıyla bölgelere uygula.');renderSide();
 }
+
+/* komple uygulama: aktif katmanın (şekli bozmadan) tamamını kumaş ya da renk ile boyar */
+function layerApply(kind){
+  const doc=D();const L=doc.layers[doc.active];
+  if(!L){toast('Önce bir katman seç.');return;}
+  if(L.isVec){
+    const d=kind==='fabric'?fabDesc():null;
+    if(kind==='fabric'&&!d){toast('Önce Kumaş sekmesinden bir kumaş seç.');return;}
+    vecSetFabric(L,L.vec.map((_,i)=>i),d);toast(kind==='fabric'?'Kumaş tüm parçalara verildi.':'Renk tüm parçalara verildi.');return;
+  }
+  if(L.locked){toast('Katman kilitli.');return;}
+  let style=S.fg;
+  if(kind==='fabric'){const src=currentPatternCanvas();if(!src){toast('Önce Kumaş sekmesinden bir kumaş seç.');return;}style=L.ctx.createPattern(src,'repeat');}
+  const before=fullSnap(L);
+  L.ctx.save();L.ctx.globalCompositeOperation='source-atop';L.ctx.fillStyle=style;L.ctx.fillRect(0,0,doc.w,doc.h);L.ctx.restore();
+  const after=fullSnap(L);
+  histPush(doc,{t:'px',layer:L.id,x:0,y:0,w:doc.w,h:doc.h,before,after,bytes:doc.w*doc.h*8});
+  invalidate();refreshLayerThumb(doc.active);markDirty();renderSide();
+  toast(kind==='fabric'?'Kumaş katmanın tamamına uygulandı (şekli korunur).':'Renk katmanın tamamına uygulandı.');
+}
 function tabFabric(body){
   const inDesign=S.mode==='design';
+  body.append(sec('Aktif katmana uygula',h('div',{class:'btnrow'},h('button',{class:'ibtn pri',onclick:()=>layerApply('fabric')},'Kumaşı tamamına uygula'),h('button',{class:'ibtn',onclick:()=>layerApply('color')},'Rengi tamamına uygula')),h('div',{class:'note'},'Şekil korunur: yalnızca boyanmış alanlar değişir. Parça parça için vektör parçayı seçip Kumaş panelinden "Kumaşı seçili parçaya ver" kullan.')));
   if(inDesign)fabricSection(body);
   /* hazır desenler */
   const cols=h('div',{class:'row',style:'gap:10px;flex-wrap:wrap'},
@@ -4627,7 +4854,7 @@ function openExport(){
   const list=h('div',{class:'bcards',style:'grid-template-columns:1fr'});
   list.append(btn('PNG görsel','Beyaz zeminli, paylaşmak için',async()=>saveFile(await toBlob(flatten(doc,false,scale)),nm+'.png')));
   list.append(btn('PNG şeffaf','Zemin olmadan, katmanlar birleşik',async()=>saveFile(await toBlob(flatten(doc,true,scale)),nm+'-seffaf.png')));
-  list.append(btn('JPG','Küçük dosya, baskı provası',async()=>saveFile(await toBlob(flatten(doc,false,scale),'image/jpeg',.92),nm+'.jpg')));
+  list.append(btn('JPG','Yüksek kalite (%96), baskı provası',async()=>saveFile(await toBlob(flatten(doc,false,scale),'image/jpeg',.96),nm+'.jpg')));
   list.append(btn('PSD (Photoshop)','Katmanlar ayrı ayrı, şeffaf; Photoshop ve Photopea açar',async()=>saveFile(makePSD(doc),nm+'.psd')));
   list.append(btn('PDF','Tek sayfa, 200 dpi',async()=>saveFile(await makePDF(flatten(doc,false,scale)),nm+'.pdf')));
   list.append(btn('Katmanlar (ZIP)','Her katman ayrı şeffaf PNG + birleşik görsel',async()=>{
@@ -4698,8 +4925,8 @@ $('#fileImgs').addEventListener('change',async e=>{
   if(!files.length){toast('Görsel seçilmedi.');return;}
   for(const f of files){try{let img;try{img=await blobToImg(f);}catch(_){const bmp=await createImageBitmap(f);const cc=newCanvas(bmp.width,bmp.height);cc.getContext('2d').drawImage(bmp,0,0);img=cc;}
     const iw=img.naturalWidth||img.width,ih=img.naturalHeight||img.height;
-    const k=Math.min(1,1000/Math.max(iw,ih)),c=newCanvas(Math.round(iw*k),Math.round(ih*k));c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    const d=Math.min(1,320/Math.max(c.width,c.height));addItem({type:'img',w:Math.round(c.width*d),h:Math.round(c.height*d),src:c.toDataURL('image/jpeg',.86)});}catch(err){toast('Bir görsel açılamadı. JPG ya da PNG olarak deneyin.');}}
+    const k=Math.min(1,1800/Math.max(iw,ih)),c=newCanvas(Math.round(iw*k),Math.round(ih*k));c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    const d=Math.min(1,320/Math.max(c.width,c.height));addItem({type:'img',w:Math.round(c.width*d),h:Math.round(c.height*d),src:c.toDataURL('image/jpeg',.93)});}catch(err){toast('Bir görsel açılamadı. JPG ya da PNG olarak deneyin.');}}
 });
 /* Defter: görselin etrafını serbest çizerek parça kes (şeffaf PNG) */
 function cutoutOpen(it){
