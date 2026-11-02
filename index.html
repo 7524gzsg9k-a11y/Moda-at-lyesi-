@@ -2854,10 +2854,10 @@ function rasterToParts(){
   setTimeout(()=>{
     const shapes=layerToVec(doc,L);
     if(!shapes.length){toast('Kapalı bölge bulunamadı. Çizgileri kapatıp tekrar dene.');return;}
-    const idx=doc.active;
-    addVecLayer();const V=D().layers[D().active];
+    layerEdit(()=>{addVecLayer();const V=D().layers[D().active];
     V.name=(L.name||'Çizim')+' (parçalar)';V.vec=shapes;VSEL=0;VSELS=[0];S.tool='shape';
-    L.visible=false;
+    L.visible=false;});
+    const V=D().layers[D().active];
     vecRender(V);renderTools();renderSide();invalidate();markDirty();
     toast(shapes.length+' parça oluşturuldu. Her parçaya tıklayıp kumaş ya da renk verebilirsin. Asıl çizim gizlendi.');
   },30);
@@ -5042,6 +5042,39 @@ window.addEventListener('beforeunload',()=>{if(P&&P.dirty)saveNow(false);});
   window.__ready=true;
 })();
 
+
+/* ---- v120: vektör düzenlemeleri geri alınabilir (structEntry ile) ---- */
+function vecEdit(L,fn){
+  const doc=D();const before=JSON.parse(JSON.stringify(L.vec||[]));
+  const r=fn();
+  const after=JSON.parse(JSON.stringify(L.vec||[]));
+  const apply=v=>{L.vec=JSON.parse(JSON.stringify(v));if(VSEL>=L.vec.length)VSEL=-1;VSELS=VSELS.filter(i=>i<L.vec.length);vecRender(L);renderSide();invalidate();};
+  structEntry(doc,()=>apply(before),()=>apply(after),JSON.stringify(after).length);
+  return r;
+}
+{
+  const _vsf=vecSetFabric,_vfs=vecFabScale,_vfr=vecFabRot,_vsm=vecSnapToMann;
+  vecSetFabric=function(L,idx,d){return vecEdit(L,()=>_vsf(L,idx,d));};
+  vecFabScale=function(L,idx,f){return vecEdit(L,()=>_vfs(L,idx,f));};
+  vecFabRot=function(L,idx,deg){return vecEdit(L,()=>_vfr(L,idx,deg));};
+  vecSnapToMann=function(L,idx,radius){return vecEdit(L,()=>_vsm(L,idx,radius));};
+}
+
+/* ---- v121: katman ekleme işlemleri geri alınabilir ---- */
+function layerEdit(fn){
+  const doc=D();const before=doc.layers.slice(),bAct=doc.active,bVis=doc.layers.map(l=>l.visible);
+  const r=fn();
+  const after=doc.layers.slice(),aAct=doc.active,aVis=doc.layers.map(l=>l.visible);
+  const apply=(lst,act,vis)=>{doc.layers=lst.slice();doc.layers.forEach((l,i)=>{if(vis[i]!==undefined)l.visible=vis[i];});doc.active=Math.max(0,Math.min(act,doc.layers.length-1));refreshLayers();invalidate();renderSide();};
+  structEntry(doc,()=>apply(before,bAct,bVis),()=>apply(after,aAct,aVis),0);
+  return r;
+}
+{
+  const _aa=addAccessory,_ke=kalipEkle,_bc=bosCizim;
+  addAccessory=function(id,name){return layerEdit(()=>_aa(id,name));};
+  kalipEkle=function(i){return layerEdit(()=>_ke(i));};
+  bosCizim=function(){return layerEdit(()=>_bc());};
+}
 </script>
 
 </body></html>
