@@ -646,6 +646,7 @@ function render(){
     for(let x=S.gridSize;x<doc.w;x+=S.gridSize){cx.moveTo(x,0);cx.lineTo(x,doc.h);}
     for(let y=S.gridSize;y<doc.h;y+=S.gridSize){cx.moveTo(0,y);cx.lineTo(doc.w,y);}cx.stroke();}
   if(S.mode==='design'){drawFigureGuides(cx,doc);drawFitOverlay(cx,doc);drawNodeHandles(cx,doc);drawVecNodes(cx,doc);}
+  drawGuidesOv(cx,doc);
   if(S.sym!=='none'){cx.strokeStyle=cssC.acc;cx.globalAlpha=.7;cx.lineWidth=1.5/v.z;cx.setLineDash([8/v.z,6/v.z]);cx.beginPath();
     if(S.sym==='mirror'||S.sym==='mirror4'||S.sym==='radial'||S.sym==='radialm'||S.sym==='shiftX'||S.sym==='shift4'){cx.moveTo(doc.w/2,0);cx.lineTo(doc.w/2,doc.h);}
     if(S.sym==='mirrorH'||S.sym==='shiftY'||S.sym==='shift4'){cx.moveTo(0,doc.h/2);cx.lineTo(doc.w,doc.h/2);}
@@ -749,7 +750,7 @@ function drawLayers(g,doc,live){
 }
 function drawDoc(g,doc,opt){opt=opt||{};
   if(opt.bg!==false&&doc.bg.visible){g.fillStyle=doc.bg.color;g.fillRect(0,0,doc.w,doc.h);}
-  drawLayers(g,doc,false);}
+  drawLayers(g,doc,false);drawCallouts(g,doc);}
 
 /* ============ simetri ============ */
 function mulMat(A,B){return[A[0]*B[0]+A[2]*B[1],A[1]*B[0]+A[3]*B[1],A[0]*B[2]+A[2]*B[3],A[1]*B[2]+A[3]*B[3],A[0]*B[4]+A[2]*B[5]+A[4],A[1]*B[4]+A[3]*B[5]+A[5]];}
@@ -1071,6 +1072,7 @@ function shapePath(g,sh){
   else if(m==='rrect'){const r=Math.min(Math.abs(w),Math.abs(hh))*.2;g.roundRect(Math.min(x0,x1),Math.min(y0,y1),Math.abs(w),Math.abs(hh),r);}
   else if(m==='ellipse')g.ellipse(x0+w/2,y0+hh/2,Math.abs(w)/2,Math.abs(hh)/2,0,0,6.2832);
   else if(m==='tri'){g.moveTo(x0+w/2,y0);g.lineTo(x1,y1);g.lineTo(x0,y1);g.closePath();}
+  else if(m==='star'||m==='hex'){const pts=polyPts(m,x0+w/2,y0+hh/2,Math.abs(w)/2,Math.abs(hh)/2);pts.forEach((q,i)=>i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1]));g.closePath();}
 }
 function paintShape(g,sh,alpha){
   const sw=S.size,fm=S.shape.fill;
@@ -1125,7 +1127,7 @@ function commitShape(){
   if(L.isVec){/* vektör katmanı: şekil listeye eklenir, tuval listeden yeniden çizilir (düzenlenebilir) */
     const fm=S.shape.fill,mode=S.shape.mode;
     const x0=Math.min(sh.x0,sh.x1),y0=Math.min(sh.y0,sh.y1),x1=Math.max(sh.x0,sh.x1),y1=Math.max(sh.y0,sh.y1);
-    const s=mode==='line'?{kind:'line',pts:[[sh.x0,sh.y0],[sh.x1,sh.y1]]}:mode==='ellipse'?{kind:'ellipse',x:x0,y:y0,w:x1-x0,h:y1-y0}:mode==='tri'?{kind:'poly',pts:[[(x0+x1)/2,y0],[x1,y1],[x0,y1]]}:{kind:'rect',x:x0,y:y0,w:x1-x0,h:y1-y0};
+    const s=mode==='line'?{kind:'line',pts:[[sh.x0,sh.y0],[sh.x1,sh.y1]]}:(mode==='star'||mode==='hex')?{kind:'poly',pts:polyPts(mode,(x0+x1)/2,(y0+y1)/2,(x1-x0)/2,(y1-y0)/2)}:mode==='ellipse'?{kind:'ellipse',x:x0,y:y0,w:x1-x0,h:y1-y0}:mode==='tri'?{kind:'poly',pts:[[(x0+x1)/2,y0],[x1,y1],[x0,y1]]}:{kind:'rect',x:x0,y:y0,w:x1-x0,h:y1-y0};
     s.stroke=(mode==='line'||fm==='stroke'||fm==='both')?S.fg:null;s.fill=(mode!=='line'&&(fm==='fill'||fm==='both'))?(fm==='both'?S.bg:S.fg):null;s.sw=S.size;
     if(!s.stroke&&!s.fill)s.stroke=S.fg;
     const idx=L.vec.length;L.vec.push(s);vecRender(L);
@@ -1376,7 +1378,7 @@ cv.addEventListener('pointerdown',e=>{
     case'pick':pickColor(p.x,p.y,false);ST.picking=true;break;
     case'shape':{const LV=doc.layers[doc.active];
       if(LV&&LV.isVec&&S.shape.mode==='free'){FREE={pts:[[p.x,p.y]]};break;}
-      if(LV&&LV.isVec&&!S.lockEdit&&VSEL>=0&&LV.vec[VSEL]&&LV.vec[VSEL].pts){const z=doc.view.z;const hb=vecCornerHit(LV.vec[VSEL],p.x,p.y,z);if(hb){vsDrag={L:LV,i:VSEL,c:hb,pts0:LV.vec[VSEL].pts.map(q=>q.slice()),bb:vecBox(LV.vec[VSEL])};break;}const tol=22/z;let bi=-1,k=-1,bd=tol;LV.vec.forEach((sh2,si)=>{if(!sh2.pts)return;sh2.pts.forEach((q,j)=>{const d=Math.hypot(q[0]-p.x,q[1]-p.y);if(d<bd){bd=d;bi=si;k=j;}});});if(k>=0){VSEL=bi;VSELS=[bi];vnDrag={L:LV,i:bi,k};renderSide();break;}}
+      if(LV&&LV.isVec&&!S.lockEdit&&VSEL>=0&&LV.vec[VSEL]&&LV.vec[VSEL].pts){const z=doc.view.z;const hb=vecCornerHit(LV.vec[VSEL],p.x,p.y,z);if(hb){vsDrag={L:LV,i:VSEL,c:hb,pts0:LV.vec[VSEL].pts.map(q=>q.slice()),bb:vecBox(LV.vec[VSEL])};break;}const tol=22/z;let bi=-1,k=-1,bd=tol;LV.vec.forEach((sh2,si)=>{if(!sh2.pts)return;sh2.pts.forEach((q,j)=>{const d=Math.hypot(q[0]-p.x,q[1]-p.y);if(d<bd){bd=d;bi=si;k=j;}});});if(k>=0){VSEL=bi;VSELS=[bi];S.hdNode=k;if(S.hdMode)hdDrag={L:LV,i:bi,k,snap:JSON.stringify(LV.vec)};else vnDrag={L:LV,i:bi,k};renderSide();break;}}
       if(LV&&LV.isVec&&vecHit(LV,p.x,p.y)>=0){vecDown(LV,p,e);break;}
       if(LV&&LV.isVec&&!e.shiftKey)VSELS=[];
       SHAPE={x0:p.x,y0:p.y,x1:p.x,y1:p.y,shift:e.shiftKey};break;}
@@ -2871,6 +2873,7 @@ function drawVecNodes(g,doc){
   g.save();g.lineWidth=1.2/z;g.fillStyle='#ffffff';g.strokeStyle='#1e3a8a';
   L.vec.forEach((o,oi)=>{if(!o.pts||oi===VSEL)return;o.pts.forEach(q=>{g.beginPath();g.arc(q[0],q[1],3.5/z,0,6.2832);g.fill();g.stroke();});});
   sh.pts.forEach(q=>{g.beginPath();g.arc(q[0],q[1],5/z,0,6.2832);g.fill();g.stroke();});
+  if(sh.hd){g.strokeStyle='#7c3aed';sh.hd.forEach((hv,k)=>{if(!hv)return;const q=sh.pts[k];[hv.i,hv.o].forEach(c=>{if(!c)return;g.beginPath();g.moveTo(q[0],q[1]);g.lineTo(c[0],c[1]);g.stroke();g.beginPath();g.arc(c[0],c[1],3.5/z,0,6.2832);g.fill();g.stroke();});});}
   g.restore();
 }
 function drawFitOverlay(g,doc){
@@ -3593,7 +3596,7 @@ function tabTool(body){
       h('div',{class:'note'},'Çizgi katmanın altındaki bir katmana boya; "Tüm katmanlar" çizgilerin sınırladığı bölgeyi bulur. Kenar payı çizgi altındaki boşluğu kapatır.')));
   }else if(t==='shape'){
     body.append(sec('Şekil',
-      seg([['line','Çizgi'],['rect','Kare'],['rrect','Yuvarlak köşe'],['ellipse','Elips'],['tri','Üçgen'],['free','Serbest']],S.shape.mode,v=>{S.shape.mode=v;renderSide();}),
+      seg([['line','Çizgi'],['rect','Kare'],['rrect','Yuvarlak köşe'],['ellipse','Elips'],['tri','Üçgen'],['star','Yıldız'],['hex','Altıgen'],['free','Serbest']],S.shape.mode,v=>{S.shape.mode=v;renderSide();}),
       S.shape.mode!=='line'?seg([['stroke','Kontur'],['fill','Dolgu'],['both','İkisi']],S.shape.fill,v=>{S.shape.fill=v;renderSide();}):null,
       toggleRow('Kesik çizgi (dikiş)',S.shape.dash,v=>{S.shape.dash=v;renderSide();}),
       slider('Çizgi kalınlığı',1,120,1,S.size,v=>{S.size=v;renderQuick();},v=>v+' px'),
@@ -3766,9 +3769,10 @@ function vecDraw(g,s){if(s.kind==='pf'){vecDrawPF(g,s);return;}g.save();g.beginP
   if(s.kind==='rect')g.rect(s.x,s.y,s.w,s.h);
   else if(s.kind==='ellipse')g.ellipse(s.x+s.w/2,s.y+s.h/2,Math.abs(s.w/2),Math.abs(s.h/2),0,0,6.2832);
   else if(s.rings){s.rings.forEach(r=>{r.forEach((p,i)=>i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1]));g.closePath();});}
-  else if(s.kind==='poly'||s.kind==='line'){s.pts.forEach((p,i)=>i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1]));if(s.kind==='poly')g.closePath();}
+  else if(s.kind==='poly'||s.kind==='line'){vecPathPts(g,s);}
   if(fabPat||s.fill){g.fillStyle=fabPat||s.fill;g.fill(s.rings?'evenodd':'nonzero');}
-  if(s.stroke){g.strokeStyle=s.stroke;g.lineWidth=s.sw||2;g.lineJoin='round';g.stroke();}
+  if(s.extra&&!s.stroke)vecExtras(g,s);
+  if(s.stroke){const ln=s.ln||{},sw=s.sw||2;g.strokeStyle=s.stroke;g.lineWidth=sw;g.lineJoin=ln.join||'round';g.lineCap=ln.cap||'butt';g.miterLimit=ln.miter||10;if(ln.dash&&ln.dash.length)g.setLineDash(ln.dash.map(v=>v*sw));g.stroke();g.setLineDash([]);if(s.extra)vecExtras(g,s);if((ln.arrowS||ln.arrowE)&&s.pts&&s.pts.length>1&&(s.kind==='line'||ln.open))vecArrows(g,s,ln);}
   g.restore();}
 function vecRender(L){if(!L||!L.canvas)return;L.ctx.clearRect(0,0,L.canvas.width,L.canvas.height);(L.vec||[]).forEach(s=>vecDraw(L.ctx,s));}
 function vecSet(L,i,key,v){const s=L.vec[i];if(!s||!isFinite(v))return;const old=s[key];
@@ -3952,7 +3956,7 @@ function tabLayers(body){
     const row=h('div',{class:'lrow','aria-current':String(i===doc.active),onclick:e=>{if(e.target.closest('button,input'))return;doc.active=i;renderSide();}},
       h('button',{class:'sm'+(L.visible?' on':''),'aria-label':'Göster/gizle',onclick:()=>{L.visible=!L.visible;invalidate();markDirty();renderSide();},html:ic(L.visible?'eye':'eyeoff')}),
       th,nm,
-      L.clip?h('span',{class:'tag'},'kırpma'):null,L.alphaLock?h('span',{class:'tag'},'α'):null,L.group?h('span',{class:'tag'},L.group):null,
+      L.clip?h('span',{class:'tag'},'kırpma'):null,L.alphaLock?h('span',{class:'tag'},'α'):null,L.noExport?h('span',{class:'tag'},'dışa kapalı'):null,L.group?h('span',{class:'tag'},L.group):null,
       h('button',{class:'sm'+(L.locked?' on':''),'aria-label':'Kilitle',onclick:()=>{L.locked=!L.locked;markDirty();renderSide();},html:ic(L.locked?'lock':'unlock')}));
     list.append(row);
     th.getContext('2d').drawImage(L.canvas,0,0,34,44);
@@ -3982,6 +3986,7 @@ function tabLayers(body){
     slider('Opaklık',0,100,1,Math.round(L.opacity*100),v=>{L.opacity=v/100;invalidate();markDirty();},v=>v+'%'),
     h('div',{class:'row'},h('label',null,'Karışım'),h('select',{style:'flex:1','aria-label':'Karışım modu',onchange:e=>{L.blend=e.target.value;invalidate();markDirty();}},BLENDS.map(([v,t])=>h('option',{value:v,selected:L.blend===v},t)))),
     toggleRow('Saydamlığı kilitle (sadece boyalı alana çiz)',L.alphaLock,v=>{L.alphaLock=v;markDirty();renderSide();}),
+    toggleRow('Dışa aktarmada gizle (şablon/kılavuz)',!!L.noExport,v=>{L.noExport=v;markDirty();renderSide();toast(v?'Bu katman dışa aktarmada yer almayacak':'Bu katman dışa aktarmaya dahil');}),
     toggleRow('Alttaki katmana kırp',L.clip,v=>{L.clip=v;invalidate();markDirty();renderSide();}),
     h('div',{class:'btnrow'},h('button',{class:'ibtn',onclick:clearLayer},'Katmanı temizle'),h('button',{class:'ibtn',onclick:()=>$('#fileImg').click(),html:ic('image')},'Görsel ekle'),h('button',{class:'ibtn',onclick:()=>{window.__asRef=true;$('#fileImg').click();},html:ic('image')},'Şablon olarak ekle'))));
   if(S.mode==='design')body.append(sec('Efekt katmanları ve araçlar',
@@ -4254,9 +4259,9 @@ function addFlat(back){
 /* ============ teknik föy ============ */
 function openTechSheet(){
   const doc=DOCS.design;if(!doc){return;}
-  const f={model:P?P.name:'',sezon:'',kumas:'',beden:'XS – XL',renk:'',not:''};
+  const f={model:P?P.name:'',sezon:'',kumas:'',beden:'XS – XL',renk:'',olcu:'',not:''};
   const inp=(k,label,ph,multi)=>h('div',{class:'row'},h('label',{style:'min-width:88px'},label),multi?h('textarea',{rows:3,placeholder:ph,style:'flex:1',oninput:e=>f[k]=e.target.value}):h('input',{type:'text',value:f[k],placeholder:ph,style:'flex:1',oninput:e=>f[k]=e.target.value}));
-  openModal('Teknik föy',h('div',{class:'bd'},inp('model','Model adı','Örn. Kayık yaka mini elbise'),inp('sezon','Sezon','Örn. İlkbahar/Yaz 2027'),inp('kumas','Kumaş','Örn. %100 pamuk poplin, astar: viskon',true),inp('beden','Bedenler','XS – XL'),inp('renk','Renk notu','Örn. Krem, kırmızı'),inp('not','Üretim notu','Dikiş payı, düğme, fermuar…',true),
+  openModal('Teknik föy',h('div',{class:'bd'},inp('model','Model adı','Örn. Kayık yaka mini elbise'),inp('sezon','Sezon','Örn. İlkbahar/Yaz 2027'),inp('kumas','Kumaş','Örn. %100 pamuk poplin, astar: viskon',true),inp('beden','Bedenler','XS – XL'),inp('renk','Renk notu','Örn. Krem, kırmızı'),inp('olcu','Ölçüler (cm)','Göğüs: 90,94,98,102,106 (XS→XL)',true),inp('not','Üretim notu','Dikiş payı, düğme, fermuar…',true),
     h('div',{class:'note'},'Tasarımın, kullandığın renkler ve notlar tek A4 sayfaya konur.')),
     [h('button',{class:'ibtn',onclick:closeModal},'Vazgeç'),h('button',{class:'ibtn pri',onclick:async()=>{closeModal();toast('Hazırlanıyor…',2500);const c=await renderTechSheet(doc,f);const nm=slug(f.model||'tasarim');
       saveFile(await makePDF(c),nm+'-foy.pdf');}},'PDF olarak indir'),
@@ -4280,8 +4285,9 @@ async function renderTechSheet(doc,f){
   head('Ölçü tablosu (cm)');
   const heads=['Ölçü','XS','S','M','L','XL'],rows=['Göğüs','Bel','Kalça','Boy','Kol boyu'];g.font="500 20px 'Hanken Grotesk',sans-serif";
   const cw=[130,74,74,74,74,74];let cx0=x0;heads.forEach((t,i)=>{g.fillStyle='#17202a';g.fillText(t,cx0+6,y+14);cx0+=cw[i];});y+=36;
-  rows.forEach(r=>{let cx1=x0;cw.forEach((w,i)=>{g.strokeStyle='#cfd5db';g.strokeRect(cx1,y-16,w,40);if(i===0){g.fillStyle='#2b3440';g.fillText(r,cx1+6,y+4);}cx1+=w;});y+=40;});
-  y+=36;head('Üretim notları');para(f.not);
+  const olcuVals={};String(f.olcu||'').split('\n').forEach(l=>{const m=l.split(':');if(m.length>=2)olcuVals[m[0].trim().toLowerCase()]=m.slice(1).join(':').split(/[,\s]+/).filter(Boolean);});
+  rows.forEach(r=>{let cx1=x0;cw.forEach((w,i)=>{g.strokeStyle='#cfd5db';g.strokeRect(cx1,y-16,w,40);g.fillStyle='#2b3440';if(i===0)g.fillText(r,cx1+6,y+4);else{const vv=olcuVals[r.toLowerCase()];g.fillText((vv&&vv[i-1])||'',cx1+6,y+4);}cx1+=w;});y+=40;});
+  y+=36;head('Açıklamalar');((DOCS.design&&DOCS.design.callouts)||[]).forEach((c,ci)=>para((ci+1)+'. '+c.text));head('Üretim notları');para(f.not);
   g.fillStyle='#8a949e';g.font="400 18px 'Hanken Grotesk',sans-serif";g.fillText('Moda Atölyesi ile hazırlandı',50,H-40);
   return c;
 }
@@ -4334,7 +4340,7 @@ K('Tab','Panelleri gizle / göster (tam ekran çizim)','Görünüm',togglePanels
 K('Alt+1','Tasarım moduna geç','Görünüm',()=>switchMode('design'));K('Alt+2','Desen moduna geç','Görünüm',()=>switchMode('pattern'));K('Alt+3','Defter moduna geç','Görünüm',()=>switchMode('board'));
 /* dosya */
 K('Ctrl+S','Kaydet','Dosya',()=>saveNow(true));K('Alt+N','Yeni tasarım','Dosya',openNewDesign);K('Alt+O','Projelerim','Dosya',openGallery);K('Ctrl+Shift+E','Dışa aktar','Dosya',openExport);K('Alt+P','Teknik föy (PDF)','Dosya',openTechSheet);
-K('Ctrl+K','Komut ara','Yardım',openPalette);K('?','Kısayol listesi','Yardım',openHelp);K('F1','Asistan (soru sor)','Yardım',()=>openAssist(),{hidden:true});K('Ctrl+/','Asistana sor','Yardım',()=>openAssist());
+K('Ctrl+K','Komut ara','Yardım',openPalette);K('?','Kısayol listesi','Yardım',()=>openHelp());K('F1','Asistan (soru sor)','Yardım',()=>openAssist(),{hidden:true});K('Ctrl+/','Asistana sor','Yardım',()=>openAssist());
 /* komutlar (kısayolsuz) */
 const CMDS=[
  ['Kıyafet ekle (elbise, etek, pantolon…)','Kıyafet',()=>{S.tab.design='garment';renderSide();}],['Teknik çizim ekle: ön','Kıyafet',()=>addFlat(false)],['Teknik çizim ekle: arka','Kıyafet',()=>addFlat(true)],
@@ -4461,7 +4467,7 @@ window.addEventListener('keydown',e=>{
   if(mod&&(key==='+'||key==='='||(key==='-'))){e.preventDefault();zoomBy(key==='-'?1/1.25:1.25);}
 });
 
-$('#btnKeys').addEventListener('click',openHelp);$('#btnCmd').addEventListener('click',openPalette);
+$('#btnKeys').addEventListener('click',()=>openHelp());$('#btnCmd').addEventListener('click',openPalette);
 
 /* ============ desen mantığı ============ */
 const PATCACHE={};
@@ -4639,14 +4645,14 @@ const toBlob=(c,t,q)=>new Promise(res=>{let done=false;const fin=b=>{if(!done){d
   const tm=setTimeout(fb,4000);
   try{c.toBlob(b=>{clearTimeout(tm);if(b)fin(b);else fb();},t||'image/png',q);}catch(e){clearTimeout(tm);fb();}});
 async function docToRecord(doc){
-  const layers=[];for(const L of doc.layers)layers.push({name:L.name,group:L.group||'',visible:L.visible,opacity:L.opacity,blend:L.blend,locked:L.locked,alphaLock:L.alphaLock,clip:!!L.clip,tag:L.tag,gar:L.gar?JSON.stringify(L.gar):null,isVec:!!L.isVec,vec:L.vec?JSON.stringify(L.vec):null,blob:await toBlob(L.canvas,'image/png')});
+  const layers=[];for(const L of doc.layers)layers.push({name:L.name,group:L.group||'',visible:L.visible,opacity:L.opacity,blend:L.blend,locked:L.locked,alphaLock:L.alphaLock,clip:!!L.clip,noExport:!!L.noExport,tag:L.tag,gar:L.gar?JSON.stringify(L.gar):null,isVec:!!L.isVec,vec:L.vec?JSON.stringify(L.vec):null,blob:await toBlob(L.canvas,'image/png')});
   const t=newCanvas(240,Math.round(240*doc.h/doc.w)),g=t.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,t.width,t.height);g.drawImage(tileFromDoc(doc),0,0,t.width,t.height);
-  return{w:doc.w,h:doc.h,layers,bg:doc.bg,active:doc.active,figN:doc.figN||1,figGuides:!!doc.figGuides,thumb:t.toDataURL('image/jpeg',.8),view:doc.view};
+  return{w:doc.w,h:doc.h,layers,bg:doc.bg,active:doc.active,figN:doc.figN||1,figGuides:!!doc.figGuides,guides:doc.guides||{v:[],h:[]},thumb:t.toDataURL('image/jpeg',.8),view:doc.view};
 }
 function blobToImg(b){return new Promise((res,rej)=>{const u=URL.createObjectURL(b),i=new Image();i.onload=()=>{res(i);setTimeout(()=>URL.revokeObjectURL(u),2000);};i.onerror=rej;i.src=u;});}
 async function docFromRecord(rec,kind){
-  const doc=makeDoc(rec.w,rec.h,kind);doc.bg=rec.bg||{color:'#fff',visible:true};doc.figN=rec.figN||1;doc.figGuides=!!rec.figGuides;
-  for(const l of rec.layers){const L=makeLayer(doc,l.name);Object.assign(L,{group:l.group||'',visible:l.visible,opacity:l.opacity,blend:l.blend,locked:l.locked,alphaLock:l.alphaLock,clip:l.clip,tag:l.tag||''});if(l.gar){try{L.gar=JSON.parse(l.gar);}catch(e){}}
+  const doc=makeDoc(rec.w,rec.h,kind);doc.bg=rec.bg||{color:'#fff',visible:true};doc.figN=rec.figN||1;doc.figGuides=!!rec.figGuides;doc.guides=rec.guides||{v:[],h:[]};
+  for(const l of rec.layers){const L=makeLayer(doc,l.name);Object.assign(L,{group:l.group||'',visible:l.visible,opacity:l.opacity,blend:l.blend,locked:l.locked,alphaLock:l.alphaLock,clip:l.clip,noExport:!!l.noExport,tag:l.tag||''});if(l.gar){try{L.gar=JSON.parse(l.gar);}catch(e){}}
     if(l.isVec){L.isVec=true;try{L.vec=l.vec?JSON.parse(l.vec):[];}catch(e){L.vec=[];}}
     try{const img=await blobToImg(l.blob);L.ctx.drawImage(img,0,0);}catch(e){}doc.layers.push(L);}
   doc.active=clamp(rec.active||0,0,doc.layers.length-1);/* kayıtlı görünüm geri yüklenmez: eski zoom/konum sayfayı kaydırıyordu; her açılışta sığdırılır */
@@ -4802,14 +4808,14 @@ function flatten(doc,transparent,scale){
   scale=scale||1;const c=newCanvas(Math.round(doc.w*scale),Math.round(doc.h*scale)),g=c.getContext('2d');
   if(!transparent){g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);}
   g.scale(scale,scale);
-  const hid=doc.layers.filter(l=>l.ref&&l.visible);hid.forEach(l=>l.visible=false);
-  try{drawDoc(g,doc,{bg:!transparent});}finally{hid.forEach(l=>l.visible=true);}
+  const hid=doc.layers.filter(l=>(l.ref||l.noExport)&&l.visible);hid.forEach(l=>l.visible=false);
+  try{EXPORTING=true;drawDoc(g,doc,{bg:!transparent});}finally{EXPORTING=false;hid.forEach(l=>l.visible=true);}
   return c;
 }
 /* ---- v18: PSD (Photoshop) dışa aktarma: ham (sıkıştırmasız) 8-bit RGBA katmanlar ---- */
 const PSD_BLEND={'source-over':'norm','multiply':'mul ','screen':'scrn','overlay':'over','darken':'dark','lighten':'lite','color-dodge':'div ','color-burn':'idiv','hard-light':'hLit','soft-light':'sLit','difference':'diff','exclusion':'smud','hue':'hue ','saturation':'sat ','color':'colr','luminosity':'lum '};
 function makePSD(doc){
-  const W=doc.w,H=doc.h,layers=doc.layers.filter(L=>!L.ref);
+  const W=doc.w,H=doc.h,layers=doc.layers.filter(L=>!L.ref&&!L.noExport);
   const enc=new TextEncoder();
   const parts=[];let len=0;
   const push=b=>{parts.push(b);len+=b.length;};
@@ -5074,6 +5080,873 @@ function layerEdit(fn){
   addAccessory=function(id,name){return layerEdit(()=>_aa(id,name));};
   kalipEkle=function(i){return layerEdit(()=>_ke(i));};
   bosCizim=function(){return layerEdit(()=>_bc());};
+}
+
+/* ---- v122: kılavuzlar ve akıllı yapışma ---- */
+var EXPORTING=false;
+var SMARTL={x:[],y:[]};
+function docGuides(doc){if(!doc.guides)doc.guides={v:[],h:[]};return doc.guides;}
+function drawGuidesOv(g,doc){
+  if(EXPORTING)return;
+  const G=docGuides(doc),z=doc.view.z,R=1e5;
+  g.save();g.setLineDash([]);g.lineWidth=1/z;
+  g.strokeStyle='#17a2b8';g.globalAlpha=.9;
+  G.v.forEach(x=>{g.beginPath();g.moveTo(x,-R);g.lineTo(x,R);g.stroke();});
+  G.h.forEach(y=>{g.beginPath();g.moveTo(-R,y);g.lineTo(R,y);g.stroke();});
+  g.strokeStyle='#ff3ea5';
+  SMARTL.x.forEach(x=>{g.beginPath();g.moveTo(x,-R);g.lineTo(x,R);g.stroke();});
+  SMARTL.y.forEach(y=>{g.beginPath();g.moveTo(-R,y);g.lineTo(R,y);g.stroke();});
+  const pa=doc.printArea;if(pa){g.setLineDash([8/z,6/z]);g.strokeStyle='#f59e0b';g.lineWidth=2/z;g.strokeRect(pa.x,pa.y,pa.w,pa.h);}
+  g.restore();
+}
+function snapTargets(L,skip){
+  const doc=D(),G=docGuides(doc),tx=G.v.slice(),ty=G.h.slice();
+  tx.push(doc.w/2);ty.push(doc.h/2);
+  ((L&&L.vec)||[]).forEach((s,i)=>{if(skip.includes(i))return;const b=vecBBox(s);tx.push(b[0],(b[0]+b[2])/2,b[2]);ty.push(b[1],(b[1]+b[3])/2,b[3]);});
+  return{x:tx,y:ty};
+}
+function snapDelta(box,tg,tol){
+  const xs=[box[0],(box[0]+box[2])/2,box[2]],ys=[box[1],(box[1]+box[3])/2,box[3]];
+  let bx=null,by=null;
+  xs.forEach(a=>tg.x.forEach(t=>{const d=t-a;if(Math.abs(d)<=tol&&(bx===null||Math.abs(d)<Math.abs(bx)))bx=d;}));
+  ys.forEach(a=>tg.y.forEach(t=>{const d=t-a;if(Math.abs(d)<=tol&&(by===null||Math.abs(d)<Math.abs(by)))by=d;}));
+  return{dx:bx||0,dy:by||0};
+}
+function matchLines(box,tg,eps){
+  const out={x:[],y:[]};
+  [box[0],(box[0]+box[2])/2,box[2]].forEach(a=>tg.x.forEach(t=>{if(Math.abs(t-a)<=eps&&!out.x.includes(t))out.x.push(t);}));
+  [box[1],(box[1]+box[3])/2,box[3]].forEach(a=>tg.y.forEach(t=>{if(Math.abs(t-a)<=eps&&!out.y.includes(t))out.y.push(t);}));
+  return out;
+}
+function unionBox(L,idx){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;idx.forEach(i=>{const b=vecBBox(L.vec[i]);x0=Math.min(x0,b[0]);y0=Math.min(y0,b[1]);x1=Math.max(x1,b[2]);y1=Math.max(y1,b[3]);});return[x0,y0,x1,y1];}
+const _vecDragMove0=vecDragMove;
+vecDragMove=function(p){
+  const d=VDRAG;
+  if(!d||S.smart===false||!VSELS.length){SMARTL={x:[],y:[]};return _vecDragMove0(p);}
+  const z=D().view.z,tol=7/z;
+  const box=unionBox(d.L,VSELS);
+  const dx=p.x-d.last.x,dy=p.y-d.last.y;
+  const pb=[box[0]+dx,box[1]+dy,box[2]+dx,box[3]+dy];
+  const tg=snapTargets(d.L,VSELS);
+  const sd=snapDelta(pb,tg,tol);
+  _vecDragMove0({x:p.x+sd.dx,y:p.y+sd.dy});
+  SMARTL=matchLines(unionBox(d.L,VSELS),tg,.5);
+  invalidate();
+};
+window.addEventListener('pointerup',()=>{SMARTL={x:[],y:[]};invalidate();});
+window.addEventListener('pointermove',e=>{
+  if(!vnDrag||S.smart===false)return;const sh=vnDrag.L.vec[vnDrag.i];if(!sh||!sh.pts||!sh.pts[vnDrag.k])return;
+  const q=sh.pts[vnDrag.k],z=D().view.z,tg=snapTargets(vnDrag.L,[vnDrag.i]);
+  const sd=snapDelta([q[0],q[1],q[0],q[1]],tg,7/z);
+  q[0]+=sd.dx;q[1]+=sd.dy;SMARTL=matchLines([q[0],q[1],q[0],q[1]],tg,.5);vecRender(vnDrag.L);invalidate();
+});
+function addGuide(ax,val){if(!isFinite(val))return;const G=docGuides(D());G[ax].push(val);invalidate();markDirty();renderSide();}
+const _tabMore0=tabMore;
+tabMore=function(body){
+  _tabMore0(body);
+  const doc=D(),G=docGuides(doc);
+  const vIn=h('input',{type:'number',value:Math.round(doc.w/2),style:'width:96px','aria-label':'Dikey kılavuz konumu'});
+  const hIn=h('input',{type:'number',value:Math.round(doc.h/2),style:'width:96px','aria-label':'Yatay kılavuz konumu'});
+  const chips=(ax,arr)=>arr.map((val,i)=>h('button',{class:'ibtn',title:'Kılavuzu kaldır',onclick:()=>{arr.splice(i,1);invalidate();markDirty();renderSide();}},(ax==='v'?'x ':'y ')+Math.round(val)+' ×'));
+  body.append(sec('Kılavuzlar ve yapışma',
+    toggleRow('Akıllı kılavuz (kenar ve merkeze yapış)',S.smart!==false,v=>{S.smart=v;toast(v?'Akıllı kılavuz açık':'Akıllı kılavuz kapalı');}),
+    h('div',{class:'row'},h('label',null,'Dikey x'),vIn,h('button',{class:'ibtn',onclick:()=>addGuide('v',+vIn.value)},'Ekle')),
+    h('div',{class:'row'},h('label',null,'Yatay y'),hIn,h('button',{class:'ibtn',onclick:()=>addGuide('h',+hIn.value)},'Ekle')),
+    h('div',{class:'btnrow'},chips('v',G.v),chips('h',G.h)),
+    h('div',{class:'btnrow'},h('button',{class:'ibtn danger',onclick:()=>{doc.guides={v:[],h:[]};invalidate();markDirty();renderSide();}},'Tüm kılavuzları sil'))));
+};
+
+/* ---- v123: çizgi ayarları (uç, köşe, kesik çizgi, açık çizgi, ok uçları) ---- */
+function vecArrows(g,s,ln){
+  const P=s.pts,hl=ln.arrowSize||(4*(s.sw||2)+8);
+  const head=(a,b)=>{const ang=Math.atan2(a[1]-b[1],a[0]-b[0]);g.save();g.translate(a[0],a[1]);g.rotate(ang);g.beginPath();g.moveTo(0,0);g.lineTo(-hl,-hl*.5);g.lineTo(-hl,hl*.5);g.closePath();g.fillStyle=s.stroke;g.fill();g.restore();};
+  if(ln.arrowE)head(P[P.length-1],P[P.length-2]);
+  if(ln.arrowS)head(P[0],P[1]);
+}
+const LN_DASHES=[['Düz',null],['Kısa kesik',[3,2]],['Uzun kesik',[6,3]],['Nokta',[1,2]],['Dikiş (kısa-uzun)',[4,1,1,1]]];
+function lnPanel(L){
+  const s=L.vec[VSELS[0]],ln=(s&&s.ln)||{};
+  const apply=patch=>{vecCommitList(L,()=>{VSELS.forEach(i=>{const sh=L.vec[i];if(sh)sh.ln=Object.assign({},sh.ln||{},patch);});});renderSide();invalidate();};
+  const dashSel=h('select',{'aria-label':'Kesik çizgi deseni',onchange:e=>apply({dash:LN_DASHES[+e.target.value][1]})},
+    LN_DASHES.map(([t,v],k)=>h('option',{value:k,selected:JSON.stringify(v)===JSON.stringify(ln.dash||null)},t)));
+  const noStroke=VSELS.some(i=>L.vec[i]&&!L.vec[i].stroke);
+  return sec('Çizgi ayarları (seçili şekil)',
+    noStroke?h('div',{class:'btnrow'},h('button',{class:'ibtn pri',onclick:()=>{vecCommitList(L,()=>{VSELS.forEach(i=>{const sh=L.vec[i];if(sh&&!sh.stroke){sh.stroke=S.fg;sh.sw=Math.max(2,S.size||4);}});});renderSide();invalidate();}},'Kontur ekle'),h('span',{class:'note'},'Çizgi ayarları için önce kontur gerekir.')):null,
+    h('div',{class:'row'},h('label',null,'Uç'),seg([['butt','Düz'],['round','Yuvarlak'],['square','Kare']],ln.cap||'butt',v=>apply({cap:v}))),
+    h('div',{class:'row'},h('label',null,'Köşe'),seg([['miter','Köşeli'],['round','Yuvarlak'],['bevel','Pah']],ln.join||'round',v=>apply({join:v}))),
+    slider('Köşe sınırı',1,20,1,ln.miter||10,v=>apply({miter:v}),v=>v),
+    h('div',{class:'row'},h('label',null,'Kesik çizgi'),dashSel),
+    toggleRow('Açık çizgi (kapatma yok, ok uçları için)',!!ln.open,v=>apply({open:v})),
+    toggleRow('Başlangıçta ok',!!ln.arrowS,v=>apply({arrowS:v})),
+    toggleRow('Bitişte ok',!!ln.arrowE,v=>apply({arrowE:v})),
+    slider('Ok boyu',4,60,1,ln.arrowSize||Math.max(12,(s&&s.sw||2)*4+8),v=>apply({arrowSize:v}),v=>v+' px'),
+    h('div',{class:'note'},'Ayarlar seçili tüm şekillere uygulanır. Ok uçları yalnızca açık çizgilerde görünür (Çizgi şekli ya da "Açık çizgi").'));
+}
+const _vecPanel0=vecPanel;
+vecPanel=function(){
+  const base=_vecPanel0();const doc=D(),L=doc.layers[doc.active];
+  if(!L||!L.isVec||!VSELS.length)return base;
+  return h('div',null,base,lnPanel(L));
+};
+
+/* ---- v124: dikiş ve süs presetleri (seçili çizgiye uygulanır) ---- */
+function resampleLine(pts,step){
+  const segs=[];let total=0;
+  for(let i=0;i<pts.length-1;i++){const a=pts[i],b=pts[i+1],len=Math.hypot(b[0]-a[0],b[1]-a[1]);segs.push({a,b,len,start:total});total+=len;}
+  const out=[];if(!segs.length||total<=0)return{pts:out,total};
+  for(let d=0;d<=total+1e-6;d+=step){
+    const sg=segs.find(q=>d<=q.start+q.len+1e-6)||segs[segs.length-1];
+    const t=sg.len?Math.min(1,(d-sg.start)/sg.len):0;
+    const ux=(sg.b[0]-sg.a[0])/(sg.len||1),uy=(sg.b[1]-sg.a[1])/(sg.len||1);
+    out.push({x:sg.a[0]+(sg.b[0]-sg.a[0])*t,y:sg.a[1]+(sg.b[1]-sg.a[1])*t,ux,uy,nx:-uy,ny:ux,d});
+  }
+  return{pts:out,total};
+}
+function stitchShapes(type,src){
+  const col=S.fg,sw=Math.max(1.5,Math.min(8,(S.size||6)*.2)),base={stroke:col,fill:null,sw};
+  const srcPts=src.pts;const shapes=[];
+  const offsetPts=(o)=>srcPts.map(q=>[q[0],q[1]]);
+  const R=resampleLine(srcPts,sw*2.2);const samp=R.pts;
+  const line=(pts,ln)=>Object.assign({},base,{kind:'line',pts,ln:Object.assign({cap:'round',join:'round'},ln||{})});
+  const shift=(o)=>samp.map(q=>[q.x+q.nx*o,q.y+q.ny*o]);
+  if(type==='tek'){shapes.push(line(offsetPts(0),{dash:[4,2]}));}
+  else if(type==='cift'){const g=sw*2.5;shapes.push(line(shift(-g/2),{dash:[4,2]}),line(shift(g/2),{dash:[4,2]}));}
+  else if(type==='uc'){const g=sw*2.5;shapes.push(line(shift(-g),{dash:[4,2]}),line(shift(0),{dash:[4,2]}),line(shift(g),{dash:[4,2]}));}
+  else if(type==='overlock'){const amp=sw*2;const z=samp.map((q,i)=>[q.x+q.nx*(i%2?amp:-amp)+q.ux*(i%2?sw:0),q.y+q.ny*(i%2?amp:-amp)+q.uy*(i%2?sw:0)]);shapes.push(line(z,{cap:'round'}));}
+  else if(type==='fitil'){samp.forEach((q,i)=>{const a=i%2?sw*2.6:-sw*2.6;shapes.push(line([[q.x,q.y],[q.x+q.nx*a,q.y+q.ny*a]],{cap:'round'}));});}
+  else if(type==='buzgu'){samp.forEach((q,i)=>{const len=sw*(3+1.6*Math.sin(i*0.9));shapes.push(line([[q.x,q.y],[q.x+q.nx*len,q.y+q.ny*len]],{cap:'round'}));});}
+  else if(type==='ip'){shapes.push(line(offsetPts(0),{cap:'round',join:'round'}));
+    const e0=srcPts[0],e1=srcPts[srcPts.length-1],r=sw*1.6;
+    [e0,e1].forEach(e=>shapes.push({kind:'ellipse',x:e[0]-r,y:e[1]-r,w:r*2,h:r*2,stroke:null,fill:col}));}
+  return shapes;
+}
+function stitchApply(type,label){
+  const doc=D(),L=doc.layers[doc.active];
+  if(!L||!L.isVec){toast('Önce bir vektör katmanı seç.');return;}
+  const src=L.vec[VSELS[0]];
+  if(!src||!src.pts||src.pts.length<2){toast('Önce tuvalde bir çizgi ya da açık şekil seç.');return;}
+  const shapes=stitchShapes(type,src);
+  vecCommitList(L,()=>{shapes.forEach(x=>L.vec.push(x));});
+  VSELS=[];renderSide();invalidate();toast(label+' eklendi ('+shapes.length+' parça)');
+}
+const STITCHES=[['tek','Tek iğne'],['cift','Çift iğne'],['uc','Üç iğne'],['overlock','Overlock'],['fitil','Fitil (1×1)'],['buzgu','Büzgü'],['ip','Bağcık ipi']];
+function stitchPanel(){
+  return sec('Dikiş ve süs presetleri',
+    h('div',{class:'note'},'Önce tuvalde bir çizgi ya da açık şekli seç; seçili çizginin üzerine dikiş ya da ip eklenir. Kalınlık ve renk Ana renk ile Çizgi kalınlığından gelir.'),
+    h('div',{class:'btnrow'},...STITCHES.map(([t,l])=>h('button',{class:'ibtn',onclick:()=>stitchApply(t,l)},l))));
+}
+const _vecPanel1=vecPanel;
+vecPanel=function(){
+  const base=_vecPanel1();const doc=D(),L=doc.layers[doc.active];
+  if(!L||!L.isVec)return base;
+  return h('div',null,base,stitchPanel());
+};
+
+/* ---- v125: parça bölme (kapalı şekli bir çizgiyle ikiye böl) ---- */
+function splitPolyByLine(poly,cut){
+  const P=poly.pts;if(!P||P.length<3)return{err:'Bölünecek şekil kapalı çokgen olmalı.'};
+  const a=cut.pts[0],b=cut.pts[cut.pts.length-1];
+  const dx=b[0]-a[0],dy=b[1]-a[1];if(!dx&&!dy)return{err:'Kesme çizgisi çok kısa.'};
+  const hits=[];
+  for(let i=0;i<P.length;i++){const p=P[i],q=P[(i+1)%P.length];
+    const ex=q[0]-p[0],ey=q[1]-p[1],den=dx*ey-dy*ex;if(Math.abs(den)<1e-9)continue;
+    const t=((p[0]-a[0])*ey-(p[1]-a[1])*ex)/den,u=((p[0]-a[0])*dy-(p[1]-a[1])*dx)/den;
+    if(u>1e-6&&u<1-1e-6&&t>=-1e-6&&t<=1+1e-6)hits.push({i,u,pt:[p[0]+ex*u,p[1]+ey*u]});}
+  if(hits.length!==2)return{err:'Kesme çizgisi parçayı tam 2 noktada kesmeli (bulunan: '+hits.length+').'};
+  hits.sort((x,y)=>x.i-y.i||x.u-y.u);
+  const ring=[],idx=[];
+  for(let i=0;i<P.length;i++){ring.push(P[i]);hits.forEach(h=>{if(h.i===i){ring.push(h.pt);idx.push(ring.length-1);}});}
+  const[s0,s1]=idx;const r1=[],r2=[];
+  for(let k=s0;k!==s1;k=(k+1)%ring.length)r1.push(ring[k]);r1.push(ring[s1]);
+  for(let k=s1;k!==s0;k=(k+1)%ring.length)r2.push(ring[k]);r2.push(ring[s0]);
+  return{parts:[r1,r2]};
+}
+function vecSplitSel(){
+  const doc=D(),L=doc.layers[doc.active];if(!L||!L.isVec)return;
+  if(VSELS.length!==2){toast('Bir kapalı çokgen ile bir kesme çizgisi seç (Shift ile iki şekil).');return;}
+  const polyI=VSELS.find(i=>L.vec[i]&&L.vec[i].kind==='poly'&&!(L.vec[i].ln&&L.vec[i].ln.open));
+  const cutI=VSELS.find(i=>i!==polyI);
+  if(polyI===undefined||cutI===undefined||!L.vec[cutI].pts){toast('Kapalı çokgen ve bir çizgi seç.');return;}
+  const res=splitPolyByLine(L.vec[polyI],L.vec[cutI]);
+  if(res.err){toast(res.err);return;}
+  vecCommitList(L,()=>{
+    const base=JSON.parse(JSON.stringify(L.vec[polyI]));
+    const parts=res.parts.map(r=>Object.assign({},JSON.parse(JSON.stringify(base)),{pts:r}));
+    [polyI,cutI].sort((x,y)=>y-x).forEach(i=>L.vec.splice(i,1));
+    parts.forEach(x=>L.vec.push(x));
+  });
+  VSELS=[];renderSide();invalidate();toast('Parça ikiye bölündü.');
+}
+const _vecPanel2=vecPanel;
+vecPanel=function(){
+  const base=_vecPanel2();const doc=D(),L=doc.layers[doc.active];
+  if(!L||!L.isVec)return base;
+  return h('div',null,base,sec('Parça bölme (kalıp)',
+    h('div',{class:'note'},'Bir kapalı çokgeni ve onu kesen bir çizgiyi birlikte seç (Shift ile), sonra böl. Çizgi parçayı tam iki yerden kesmelidir. Kesme çizgisi silinir, iki yeni parça oluşur.'),
+    h('div',{class:'btnrow'},h('button',{class:'ibtn pri',onclick:vecSplitSel},'Seçili çizgiyle böl'))));
+};
+
+/* ---- v126: Bezier tutamakları (düğüm sürükle → eğri; yumuşat / köşe yap) ---- */
+function vecPathPts(g,s){
+  const P=s.pts,hd=s.hd,n=P.length,closed=s.kind==='poly'&&!(s.ln&&s.ln.open);
+  g.moveTo(P[0][0],P[0][1]);
+  const segs=closed?n:n-1;
+  for(let i=0;i<segs;i++){const j=(i+1)%n,a=P[i],b=P[j];
+    const ho=hd&&hd[i]&&hd[i].o,hi=hd&&hd[j]&&hd[j].i;
+    if(!ho&&!hi)g.lineTo(b[0],b[1]);
+    else{const c1=ho||a,c2=hi||b;g.bezierCurveTo(c1[0],c1[1],c2[0],c2[1],b[0],b[1]);}}
+  if(closed)g.closePath();
+}
+var hdDrag=null;
+window.addEventListener('pointermove',e=>{
+  if(!hdDrag)return;const p=hoverXY(e);const sh=hdDrag.L.vec[hdDrag.i];if(!sh||!sh.pts)return;
+  const q=sh.pts[hdDrag.k];sh.hd=sh.hd||sh.pts.map(()=>null);
+  const hv=sh.hd[hdDrag.k]||(sh.hd[hdDrag.k]={t:'c',i:null,o:null});
+  hv.o=[p.x,p.y];
+  if(hv.t==='s')hv.i=[2*q[0]-p.x,2*q[1]-p.y];
+  vecRender(hdDrag.L);invalidate();
+});
+window.addEventListener('pointerup',()=>{
+  const d=hdDrag;hdDrag=null;if(!d)return;
+  const L=d.L,before=d.snap,after=JSON.stringify(L.vec);if(before===after)return;
+  structEntry(D(),()=>{L.vec=JSON.parse(before);vecRender(L);renderSide();invalidate();},()=>{L.vec=JSON.parse(after);vecRender(L);renderSide();invalidate();},0);
+});
+function vecNodeType(L,i,k,type){
+  const sh=L.vec[i];if(!sh||!sh.pts||k==null||k<0||k>=sh.pts.length){toast('Önce bir düğüm seç (tutamak modunda ya da düğüme tıklayarak).');return;}
+  vecCommitList(L,()=>{
+    sh.hd=sh.hd||sh.pts.map(()=>null);
+    if(type==='c'){sh.hd[k]=null;return;}
+    const n=sh.pts.length,P=sh.pts,prev=P[(k-1+n)%n],next=P[(k+1)%n],q=P[k];
+    let dx=next[0]-prev[0],dy=next[1]-prev[1];const l=Math.hypot(dx,dy)||1;dx/=l;dy/=l;
+    const lenF=Math.hypot(next[0]-q[0],next[1]-q[1])/3,lenB=Math.hypot(q[0]-prev[0],q[1]-prev[1])/3;
+    sh.hd[k]={t:'s',o:[q[0]+dx*lenF,q[1]+dy*lenF],i:[q[0]-dx*lenB,q[1]-dy*lenB]};
+  });
+  renderSide();invalidate();
+}
+const _vecPanel3=vecPanel;
+vecPanel=function(){
+  const base=_vecPanel3();const doc=D(),L=doc.layers[doc.active];
+  if(!L||!L.isVec)return base;
+  const k=S.hdNode;
+  return h('div',null,base,sec('Eğri tutamakları',
+    toggleRow('Tutamak modu (düğümü sürükle → eğri)',!!S.hdMode,v=>{S.hdMode=v;renderSide();invalidate();}),
+    h('div',{class:'btnrow'},
+      h('button',{class:'ibtn',onclick:()=>vecNodeType(L,VSEL,S.hdNode,'s')},'Seçili düğümü yumuşat'),
+      h('button',{class:'ibtn',onclick:()=>vecNodeType(L,VSEL,S.hdNode,'c')},'Köşe yap')),
+    h('div',{class:'note'},'Düğüme tıkla (Şekil aracı), sonra Tutamak modunu aç ve düğümü sürükle: eğri oluşur. Yumuşat, tutamakları iki yana simetrik koyar. Köşe yap eğriyi düz çizgiye döndürür. Düğüm seçili değilse önce bir düğüme dokun.')));
+};
+
+/* ---- v127: sayısal dönüşüm (X, Y, W, H, açı, çevirme) ve hizalama / dağıtma ---- */
+function vecMapPts(s,f){
+  if(!s)return;
+  if(s.kind==='pf'){vecMapPts(s.a,f);vecMapPts(s.b,f);return;}
+  if(s.kind==='rect'||s.kind==='ellipse'){const a=f(s.x,s.y),b=f(s.x+s.w,s.y+s.h);s.x=Math.min(a[0],b[0]);s.y=Math.min(a[1],b[1]);s.w=Math.abs(b[0]-a[0]);s.h=Math.abs(b[1]-a[1]);return;}
+  if(s.pts)s.pts=s.pts.map(q=>f(q[0],q[1]));
+  if(s.hd)s.hd=s.hd.map(hv=>hv?{t:hv.t,i:hv.i?f(hv.i[0],hv.i[1]):null,o:hv.o?f(hv.o[0],hv.o[1]):null}:null);
+  if(s.rings)s.rings=s.rings.map(r=>r.map(q=>f(q[0],q[1])));
+}
+function vecTransformSel(L,idx,f){vecCommitList(L,()=>{idx.forEach(i=>vecMapPts(L.vec[i],f));});renderSide();invalidate();}
+function transformPanel(L){
+  const idx=VSELS.filter(i=>L.vec[i]);if(!idx.length)return null;
+  const ub=unionBox(L,idx),W=ub[2]-ub[0],H=ub[3]-ub[1],cx=(ub[0]+ub[2])/2,cy=(ub[1]+ub[3])/2;
+  const num=(label,val,onset)=>h('div',{class:'row'},h('label',null,label),h('input',{type:'number',value:String(Math.round(val*10)/10),style:'width:96px','aria-label':label,onchange:e=>{const v=+e.target.value;if(isFinite(v))onset(v);}}));
+  const rot=deg=>{const a=deg*Math.PI/180,c=Math.cos(a),sn=Math.sin(a);vecTransformSel(L,idx,(x,y)=>{const dx=x-cx,dy=y-cy;return[cx+dx*c-dy*sn,cy+dx*sn+dy*c];});};
+  let rotIn=0;
+  const rowRot=h('div',{class:'row'},h('label',null,'Döndür (°)'),h('input',{type:'number',value:'0',style:'width:96px','aria-label':'Döndürme açısı',onchange:e=>{rotIn=+e.target.value||0;}}),h('button',{class:'ibtn',onclick:()=>{if(rotIn)rot(rotIn);}},'Uygula'));
+  return sec('Sayısal dönüşüm (seçili '+idx.length+' şekil)',
+    num('X',ub[0],v=>vecTransformSel(L,idx,(x,y)=>[x+(v-ub[0]),y])),
+    num('Y',ub[1],v=>vecTransformSel(L,idx,(x,y)=>[x,y+(v-ub[1])])),
+    num('Genişlik W',W,v=>{const sx=W?v/W:1;vecTransformSel(L,idx,(x,y)=>[ub[0]+(x-ub[0])*sx,y]);}),
+    num('Yükseklik H',H,v=>{const sy=H?v/H:1;vecTransformSel(L,idx,(x,y)=>[x,ub[1]+(y-ub[1])*sy]);}),
+    rowRot,
+    h('div',{class:'btnrow'},
+      h('button',{class:'ibtn',onclick:()=>vecTransformSel(L,idx,(x,y)=>[2*cx-x,y])},'Yatay çevir'),
+      h('button',{class:'ibtn',onclick:()=>vecTransformSel(L,idx,(x,y)=>[x,2*cy-y])},'Dikey çevir')));
+}
+function alignSel(L,idx,mode){
+  const ubx=unionBox(L,idx);
+  vecCommitList(L,()=>{idx.forEach(i=>{const b=vecBBox(L.vec[i]);let dx=0,dy=0;
+    if(mode==='l')dx=ubx[0]-b[0];if(mode==='r')dx=ubx[2]-b[2];if(mode==='cx')dx=(ubx[0]+ubx[2])/2-(b[0]+b[2])/2;
+    if(mode==='t')dy=ubx[1]-b[1];if(mode==='b')dy=ubx[3]-b[3];if(mode==='cy')dy=(ubx[1]+ubx[3])/2-(b[1]+b[3])/2;
+    vecMapPts(L.vec[i],(x,y)=>[x+dx,y+dy]);});});
+  renderSide();invalidate();
+}
+function distributeSel(L,idx,axis){
+  const ax=axis==='h'?0:1;
+  const items=idx.map(i=>({i,b:vecBBox(L.vec[i])})).sort((p,q)=>(p.b[ax]+p.b[ax+2])-(q.b[ax]+q.b[ax+2]));
+  if(items.length<3){toast('Dağıtmak için en az 3 şekil seç.');return;}
+  const start=Math.min(...items.map(it=>it.b[ax])),end=Math.max(...items.map(it=>it.b[ax+2]));
+  const total=items.reduce((s,it)=>s+(it.b[ax+2]-it.b[ax]),0);
+  const gap=(end-start-total)/(items.length-1);
+  vecCommitList(L,()=>{let cur=start;items.forEach(it=>{const d=cur-it.b[ax];const dx=axis==='h'?d:0,dy=axis==='v'?d:0;vecMapPts(L.vec[it.i],(x,y)=>[x+dx,y+dy]);cur+=(it.b[ax+2]-it.b[ax])+gap;});});
+  renderSide();invalidate();
+}
+function alignPanel(L){
+  const idx=VSELS.filter(i=>L.vec[i]);if(idx.length<2)return null;
+  const b=(t,m)=>h('button',{class:'ibtn',onclick:()=>alignSel(L,idx,m),title:t},t);
+  return sec('Hizala ve dağıt ('+idx.length+' şekil)',
+    h('div',{class:'btnrow'},b('Sola','l'),b('Yatay ortaya','cx'),b('Sağa','r'),b('Üste','t'),b('Dikey ortaya','cy'),b('Alta','b')),
+    h('div',{class:'btnrow'},h('button',{class:'ibtn',onclick:()=>distributeSel(L,idx,'h')},'Yatay eşit dağıt'),h('button',{class:'ibtn',onclick:()=>distributeSel(L,idx,'v')},'Dikey eşit dağıt')),
+    h('div',{class:'note'},'Hizalama ve dağıtma en az 2 (dağıtma için 3) şekil seçiliyken çalışır. Seçimin dış sınırına göre hizalanır.'));
+}
+const _vecPanel4=vecPanel;
+vecPanel=function(){
+  const base=_vecPanel4();const doc=D(),L=doc.layers[doc.active];
+  if(!L||!L.isVec||!VSELS.length)return base;
+  return h('div',null,base,transformPanel(L),alignPanel(L));
+};
+
+/* ---- v128: görünüm yığını (ek kontur / ek dolgu) ve kayıtlı grafik stilleri ---- */
+function vecExtras(g,s){(s.extra||[]).forEach(e=>{if(e.on===false)return;
+  if(e.k==='stroke'){g.strokeStyle=e.c;g.lineWidth=e.sw||2;g.lineJoin='round';g.stroke();}
+  else if(e.k==='fill'){g.fillStyle=e.c;g.fill(s.rings?'evenodd':'nonzero');}});}
+function stilOku(){try{return JSON.parse(localStorage.getItem('moda_stiller')||'[]');}catch(e){return[];}}
+function stilYaz(arr){try{localStorage.setItem('moda_stiller',JSON.stringify(arr));}catch(e){toast('Stil kaydedilemedi (tarayıcı depolaması kapalı).');}}
+function stilKaydet(L,name){
+  const i=VSELS.find(k=>L.vec[k]);if(i===undefined){toast('Önce bir şekil seç.');return;}
+  const sh=L.vec[i];const st={name:name||('Stil '+(stilOku().length+1)),stroke:sh.stroke||null,sw:sh.sw||2,fill:sh.fill||null,ln:JSON.parse(JSON.stringify(sh.ln||{})),extra:JSON.parse(JSON.stringify(sh.extra||[]))};
+  const arr=stilOku();arr.push(st);stilYaz(arr);toast('Stil kaydedildi: '+st.name);renderSide();
+}
+function stilUygula(L,k){
+  const st=stilOku()[k];if(!st||!VSELS.length){toast('Önce bir stil seç ve şekil seç.');return;}
+  vecCommitList(L,()=>{VSELS.forEach(i=>{const sh=L.vec[i];if(!sh)return;
+    if(sh.kind!=='pf'){sh.stroke=st.stroke;sh.sw=st.sw;if(st.fill!=null)sh.fill=st.fill;}
+    sh.ln=JSON.parse(JSON.stringify(st.ln||{}));sh.extra=JSON.parse(JSON.stringify(st.extra||[]));});});
+  renderSide();invalidate();toast('Stil uygulandı: '+st.name);
+}
+function extraPanel(L){
+  const i=VSELS.length===1?VSELS[0]:-1,sh=L.vec[i];if(!sh)return null;
+  const ex=sh.extra||[];
+  const setEx=fn=>vecCommitList(L,()=>{const t=L.vec[i];t.extra=t.extra||[];fn(t.extra,t);});
+  const rows=ex.map((e,k)=>h('div',{class:'row'},
+    h('label',null,(e.k==='stroke'?'Kontur':'Dolgu')+' '+(k+1)),
+    h('input',{type:'color',value:e.c,'aria-label':'Ek renk',onchange:ev=>setEx(a=>{a[k].c=ev.target.value;})}),
+    e.k==='stroke'?h('input',{type:'number',value:String(e.sw||2),style:'width:70px','aria-label':'Ek kontur kalınlığı',onchange:ev=>setEx(a=>{a[k].sw=+ev.target.value||2;})}):null,
+    h('button',{class:'ibtn',onclick:()=>setEx(a=>{a[k].on=a[k].on===false;})},e.on===false?'Göster':'Gizle'),
+    h('button',{class:'ibtn danger',onclick:()=>setEx(a=>{a.splice(k,1);})},'Sil')));
+  const stiller=stilOku();
+  const sel=h('select',{'aria-label':'Kayıtlı stil'},stiller.length?stiller.map((st,k)=>h('option',{value:k},st.name)):[h('option',{value:-1},'Kayıtlı stil yok')]);
+  const nameIn=h('input',{type:'text',placeholder:'Stil adı',style:'flex:1','aria-label':'Stil adı'});
+  return sec('Görünüm yığını ve stiller',
+    h('div',{class:'btnrow'},
+      h('button',{class:'ibtn',onclick:()=>setEx(a=>{a.push({k:'stroke',c:S.fg,sw:Math.max(1,Math.round((sh.sw||2)/2)),on:true});})},'Ek kontur ekle'),
+      h('button',{class:'ibtn',onclick:()=>setEx(a=>{a.push({k:'fill',c:S.bg||'#ffffff',on:true});})},'Ek dolgu ekle')),
+    rows.length?rows:h('div',{class:'note'},'Bu şekilde ek kontur ya da dolgu yok. Ek katmanlar en üstte çizilir.'),
+    h('div',{class:'row'},h('label',null,'Stil'),nameIn,h('button',{class:'ibtn',onclick:()=>stilKaydet(L,nameIn.value.trim())},'Kaydet')),
+    h('div',{class:'row'},h('label',null,'Uygula'),sel,h('button',{class:'ibtn',onclick:()=>{const k=+sel.value;if(k>=0)stilUygula(L,k);}},'Seçili şekle'),h('button',{class:'ibtn danger',onclick:()=>{const k=+sel.value;if(k<0)return;const a=stilOku();a.splice(k,1);stilYaz(a);renderSide();}},'Sil')),
+    h('div',{class:'note'},'Stil; kontur, dolgu, kalınlık, çizgi ayarları ve ek katmanları birlikte saklar. Kayıtlar bu tarayıcıda tutulur.'));
+}
+const _vecPanel5=vecPanel;
+vecPanel=function(){
+  const base=_vecPanel5();const doc=D(),L=doc.layers[doc.active];
+  if(!L||!L.isVec||!VSELS.length)return base;
+  return h('div',null,base,extraPanel(L));
+};
+
+/* ---- v129: açıklama etiketleri (callout): lider çizgili numaralı notlar ---- */
+function drawCallouts(g,doc){
+  const list=doc.callouts||[];if(!list.length)return;
+  const z=doc.view.z,fs=14/z;
+  g.save();
+  list.forEach((c,k)=>{
+    g.setLineDash([]);g.lineWidth=1.2/z;g.strokeStyle='#1f2937';g.fillStyle='#ffffff';
+    g.beginPath();g.moveTo(c.x,c.y);g.lineTo(c.tx,c.ty);g.stroke();
+    g.beginPath();g.arc(c.x,c.y,3/z,0,6.2832);g.fillStyle='#1f2937';g.fill();
+    g.beginPath();g.arc(c.tx,c.ty,12/z,0,6.2832);g.fillStyle='#ffffff';g.fill();g.strokeStyle='#1f2937';g.stroke();
+    g.fillStyle='#1f2937';g.font=`700 ${fs}px sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(String(k+1),c.tx,c.ty);
+    g.textAlign='left';
+    const w=g.measureText(c.text||'').width;const pad=6/z;
+    const tx=c.tx+(c.tx>=c.x?14/z:-14/z-w-pad*2),ty=c.ty-fs*.6;
+    if(c.text){g.fillStyle='rgba(255,255,255,.92)';g.fillRect(tx,ty,w+pad*2,fs*1.5);g.fillStyle='#1f2937';g.fillText(c.text,tx+pad,c.ty);}
+  });
+  g.restore();
+}
+function calloutAdd(text){
+  const doc=D();const t=String(text||'').trim();if(!t){toast('Önce açıklama metnini yaz.');return;}
+  const cx=doc.w/2,cy=doc.h/2;
+  doc.callouts=doc.callouts||[];doc.callouts.push({text:t,x:cx,y:cy,tx:cx+120,ty:cy-120});
+  invalidate();markDirty();renderSide();toast('Açıklama eklendi. Koordinatlarını Ayar sekmesinden düzenleyebilirsin.');
+}
+const _tabMore1=tabMore;
+tabMore=function(body){
+  _tabMore1(body);
+  const doc=D();const list=doc.callouts||[];
+  const txt=h('input',{type:'text',placeholder:'Örn. Gizli düğme, arka yaka',style:'flex:1','aria-label':'Açıklama metni'});
+  const rowsC=list.map((c,k)=>{
+    const num=(label,key)=>h('input',{type:'number',value:String(Math.round(c[key])),style:'width:70px','aria-label':label,onchange:e=>{const v=+e.target.value;if(isFinite(v)){c[key]=v;invalidate();markDirty();}}});
+    return h('div',{class:'row'},h('label',{style:'min-width:24px'},String(k+1)),h('input',{type:'text',value:c.text,style:'flex:1','aria-label':'Açıklama metni',onchange:e=>{c.text=e.target.value;invalidate();markDirty();}}),
+      h('span',{class:'note'},'x'),num('Ok x','x'),h('span',{class:'note'},'y'),num('Ok y','y'),
+      h('span',{class:'note'},'etiket x'),num('Etiket x','tx'),h('span',{class:'note'},'y'),num('Etiket y','ty'),
+      h('button',{class:'ibtn danger',onclick:()=>{list.splice(k,1);invalidate();markDirty();renderSide();}},'Sil'));});
+  body.append(sec('Açıklama etiketleri (callout)',
+    h('div',{class:'row'},h('label',null,'Yeni'),txt,h('button',{class:'ibtn pri',onclick:()=>calloutAdd(txt.value)},'Ekle')),
+    h('div',{class:'note'},'Etiket, ok ucu (x, y) noktasından etiket kutusuna (tx, ty) çizilir. Teknik föyde "Açıklamalar" başlığı altında numaralı olarak listelenir ve dışa aktarılan görsele işlenir.'),
+    rowsC.length?rowsC:h('div',{class:'note'},'Henüz açıklama yok.')));
+};
+
+/* ---- v130: operatör yardımı: araç açıklamaları ve yeni özellik rehberi (Kısayollar penceresinde) ---- */
+const TOOL_INFO=[
+ ['Fırça (B)','Serbest çizim. Kalemle ya da parmakla boyar. Fırça stüdyosundan kendi fırçanı tasarlayabilirsin.'],
+ ['Silgi (E)','Çizilmiş alanı siler.'],
+ ['Boya (G)','Kapalı alanı renklendirir. "Çizgi boşluklarını kapat" açıksa küçük boşluklardan sızmaz.'],
+ ['Damlalık (I)','Tuvaldeki bir rengi alır.'],
+ ['Seçim (M)','Dikdörtgen alan seçer; taşı, kopyala, sil.'],
+ ['Taşı (V)','Katmanı ya da seçili şekilleri kaydırır.'],
+ ['Şekil (U)','Dikdörtgen, elips, çizgi ve serbest şekil çizer. Vektör düzenleme bu araçla yapılır (noktaları sürükle).'],
+ ['Eğri (P)','Noktalarla kontrol edilen yumuşak çizgi.'],
+ ['Motif (S)','Hazır motifleri damgalar.'],
+ ['Süs (N)','Çizgi boyunca inci, taş, payet ya da fermuar dizisi koyar.'],
+ ['Yazı (T)','Tuvale metin ekler.'],
+ ['Cetvel (R)','İki nokta arasındaki uzunluğu ölçer.'],
+ ['Kalem (Y)','Bezier yolu çizer. Noktaları sürükleyerek eğriyi düzeltirsin.'],
+ ['Gradyan (G)','İki nokta arasında renk geçişi oluşturur.'],
+ ['Bulanıklaştır (Q)','Fırça altını yumuşatır.'],
+ ['Parmak (J)','Boyayı iter ve karıştırır.'],
+ ['Kırp (C)','Pano alanını daraltır.'],
+ ['Sıvılaştır (K)','Pikselleri iterek şekil değiştirir.'],
+ ['Kaydır (H)','Tuvali taşır. Boşluk tuşu basılıyken de çalışır.']
+];
+const NEW_FEATURES=[
+ ['Kılavuzlar ve akıllı yapışma','Ayar sekmesinde dikey ya da yatay kılavuz koy. Vektör şekilleri sürüklerken kenar ve merkezler kılavuza ve diğer şekillere yapışır. Akıllı kılavuz bir düğmeyle kapatılabilir.'],
+ ['Dışa aktarmada gizle','Katman listesinde bir katmanı "Dışa aktarmada gizle" ile işaretlersen PNG, JPG, PDF, PSD çıktılarına girmez. Şablon ve kılavuz katmanları için kullan.'],
+ ['Çizgi ayarları','Vektör şekil seçiliyken uç (düz, yuvarlak, kare), köşe, kesik çizgi deseni, açık çizgi ve iki uca ok ekleyebilirsin.'],
+ ['Dikiş ve süs presetleri','Bir çizgi seç, sonra Tek iğne, Çift/Üç iğne, Overlock, Fitil, Büzgü ya da Bağcık ipi düğmesine bas. Çizginin üzerine dikiş eklenir.'],
+ ['Parça bölme','Kapalı bir çokgeni ve onu tam iki yerden kesen bir çizgiyi birlikte seç, "Seçili çizgiyle böl" düğmesine bas. Kalıp parçalarını ayırmak için kullan.'],
+ ['Eğri tutamakları','Şekil aracıyla bir düğüme tıkla, Tutamak modunu aç ve sürükle; düğümden eğri çıkar. "Yumuşat" ve "Köşe yap" düğümün türünü değiştirir.'],
+ ['Sayısal dönüşüm ve hizalama','Seçili şeklin X, Y, genişlik, yükseklik ve açısını yaz. Birden fazla şekil seçiliyken hizala ve eşit aralıkla dağıt.'],
+ ['Görünüm yığını ve stiller','Bir şekle ek kontur ya da ek dolgu ekle, göz simgesiyle gizle. Bir şeklin görünümünü stil olarak kaydet ve başka şekillere uygula.'],
+ ['Açıklama etiketleri','Ayar sekmesinde numaralı açıklama ekle. Etiket tuvale çizilir ve teknik föyde "Açıklamalar" listesinde yer alır.'],
+ ['Teknik föy ölçüleri','Teknik föy penceresindeki "Ölçüler" alanına "Göğüs: 90,94,98,102,106" biçiminde satır satır yaz; tabloya işlenir.']
+];
+function helpGuideSection(){
+  return h('div',{class:'sec'},
+    h('h4',null,'Yeni özellikler'),
+    h('div',{class:'keygrid'},NEW_FEATURES.map(([t,d])=>h('div',{class:'kgrp'},h('h4',null,t),h('div',{class:'note'},d)))),
+    h('h4',null,'Araçlar'),
+    h('div',{class:'keygrid'},TOOL_INFO.map(([t,d])=>h('div',{class:'krow'},h('span',{style:'font-weight:600'},t),h('span',{class:'note'},d)))));
+}
+const _openHelp1=openHelp;
+openHelp=function(){
+  _openHelp1();
+  const bd=document.querySelector('#modal .bd');if(bd)bd.append(helpGuideSection());
+};
+
+/* ---- v131: bileşen kütüphanesi (kategorili kalıplar), baskı alanı, çalışma düzeni ---- */
+var KALIP_FILTER='hepsi';
+function kalipKaydet(){
+  const L=D().layers[D().active];if(!L||!L.isVec||!L.vec||!L.vec.length){toast('Önce vektör katmanında bir kıyafet çiz.');return;}
+  const name=prompt('Bileşen adı:','Bileşen '+(kalipList().length+1));if(!name)return;
+  const cat=(prompt('Kategori (yaka, manşet, cep, kol, gövde, süs, diğer):','diğer')||'diğer').trim().toLowerCase()||'diğer';
+  const a=kalipList();a.push({name,cat,shapes:JSON.parse(JSON.stringify(L.vec))});
+  if(kalipSaveList(a)){toast('Bileşen kaydedildi: '+name);renderSide();}
+}
+function kalipBolumu(){
+  const a=kalipList();const cats=['hepsi',...new Set(a.map(k=>k.cat||'diğer'))];
+  return h('div',{class:'note'},a.length?'Kayıtlı bileşenler ('+a.length+'). Kategoriye göre süz:':'Henüz kayıtlı bileşen yok. Bir kıyafet parçasını seçip "Kalıp olarak kaydet" de.'),
+    a.length?h('div',{class:'btnrow'},...cats.map(c=>h('button',{class:'ibtn',onclick:()=>{KALIP_FILTER=c;renderSide();}},c))):null,
+    a.length?h('div',null,...a.map((k,i)=>(KALIP_FILTER==='hepsi'||(k.cat||'diğer')===KALIP_FILTER)?h('div',{class:'row'},h('label',null,k.name+' · '+(k.cat||'diğer')),h('button',{class:'ibtn',onclick:()=>kalipEkle(i)},'Mankene ekle'),h('button',{class:'ibtn',onclick:()=>kalipSil(i)},'Sil')):null)):null;
+}
+function fitSelToPrint(){
+  const doc=D(),L=doc.layers[doc.active],pa=doc.printArea;
+  if(!pa){toast('Önce baskı alanı kılavuzunu aç.');return;}
+  if(!L||!L.isVec||!VSELS.length){toast('Önce vektör şekli seç.');return;}
+  const ub=unionBox(L,VSELS),bw=ub[2]-ub[0],bh=ub[3]-ub[1];
+  const k=Math.min(pa.w/(bw||1),pa.h/(bh||1));
+  const cx0=(ub[0]+ub[2])/2,cy0=(ub[1]+ub[3])/2,cx1=pa.x+pa.w/2,cy1=pa.y+pa.h/2;
+  vecTransformSel(L,VSELS.slice(),(x,y)=>[cx1+(x-cx0)*k,cy1+(y-cy0)*k]);
+  toast('Seçim baskı alanına sığdırıldı.');
+}
+function workspaceSet(kind){
+  const doc=D();
+  if(kind==='foy'){openTechSheet();return;}
+  const map={cizim:{tab:'tool',tool:'brush'},kalip:{tab:'garment'},kumas:{tab:'fabric'},sekil:{tab:'trim'}};
+  const m=map[kind];if(!m)return;
+  S.mode='design';S.tab.design=m.tab;if(m.tool){S.tool=m.tool;renderTools();}
+  renderSide();invalidate();toast('Çalışma düzeni: '+({cizim:'Çizim',kalip:'Kalıp',kumas:'Kumaş',sekil:'Süs'})[kind]);
+}
+const _tabMore2=tabMore;
+tabMore=function(body){
+  _tabMore2(body);
+  const doc=D(),pa=doc.printArea;
+  const num=(label,key)=>h('input',{type:'number',value:String(Math.round(pa[key])),style:'width:90px','aria-label':'Baskı alanı '+label,onchange:e=>{const v=+e.target.value;if(isFinite(v)){pa[key]=v;invalidate();markDirty();}}});
+  body.append(sec('Baskı alanı ve çalışma düzeni',
+    toggleRow('Baskı alanı kılavuzu (turuncu kutu)',!!pa,v=>{doc.printArea=v?{x:Math.round(doc.w*.25),y:Math.round(doc.h*.25),w:Math.round(doc.w*.5),h:Math.round(doc.h*.5)}:null;invalidate();markDirty();renderSide();}),
+    pa?h('div',{class:'row'},h('label',null,'Konum'),num('x','x'),num('y','y')):null,
+    pa?h('div',{class:'row'},h('label',null,'Boyut'),num('genişlik','w'),num('yükseklik','h')):null,
+    pa?h('div',{class:'btnrow'},h('button',{class:'ibtn pri',onclick:fitSelToPrint},'Seçili şekli baskı alanına sığdır')):null,
+    h('div',{class:'note'},'Baskı alanı, tişört ya da kumaş üzerinde baskının nereye geleceğini gösterir. Dışa aktarımda görünmez.'),
+    h('h4',null,'Çalışma düzeni'),
+    h('div',{class:'btnrow'},
+      h('button',{class:'ibtn',onclick:()=>workspaceSet('cizim')},'Çizim'),
+      h('button',{class:'ibtn',onclick:()=>workspaceSet('kalip')},'Kalıp'),
+      h('button',{class:'ibtn',onclick:()=>workspaceSet('kumas')},'Kumaş'),
+      h('button',{class:'ibtn',onclick:()=>workspaceSet('sekil')},'Süs'),
+      h('button',{class:'ibtn',onclick:()=>workspaceSet('foy')},'Teknik föy'))));
+};
+
+/* ---- v132: yıldız / altıgen şekiller, araç ipuçları ---- */
+function polyPts(m,cx,cy,rx,ry){
+  const out=[];
+  if(m==='hex'){for(let k=0;k<6;k++){const a=-Math.PI/2+k*Math.PI/3;out.push([cx+rx*Math.cos(a),cy+ry*Math.sin(a)]);}return out;}
+  for(let k=0;k<10;k++){const a=-Math.PI/2+k*Math.PI/5,f=k%2?.5:1;out.push([cx+rx*f*Math.cos(a),cy+ry*f*Math.sin(a)]);}
+  return out;
+}
+const _tabTool0=tabTool;
+tabTool=function(body){
+  _tabTool0(body);
+  const t=TOOLS.find(x=>x[0]===S.tool);
+  if(!t)return;
+  const inf=TOOL_INFO.find(([k])=>k.startsWith(t[1]+' '));
+  if(inf)body.prepend(h('div',{class:'note',style:'margin-bottom:8px'},'Seçili araç: '+inf[0]+'. '+inf[1]));
+};
+
+/* ---- v133: çizim sırasında canlı ölçü etiketi (genişlik × yükseklik ya da çizgi uzunluğu) ---- */
+const _drawShapeSym0=drawShapeSym;
+drawShapeSym=function(g,doc,sh,pv){
+  _drawShapeSym0(g,doc,sh,pv);
+  if(!pv||!sh)return;
+  const z=doc.view.z,w=Math.abs(sh.x1-sh.x0),hh=Math.abs(sh.y1-sh.y0);
+  const txt=S.shape.mode==='line'?('uzunluk '+Math.round(Math.hypot(sh.x1-sh.x0,sh.y1-sh.y0))+' px'):(Math.round(w)+' × '+Math.round(hh)+' px');
+  const fs=12/z;g.save();g.font=`600 ${fs}px sans-serif`;
+  const tw=g.measureText(txt).width;const bx=sh.x1+10/z,by=sh.y1+10/z;
+  g.fillStyle='rgba(31,41,55,.85)';g.fillRect(bx,by,tw+10/z,fs*1.6);
+  g.fillStyle='#ffffff';g.textBaseline='middle';g.fillText(txt,bx+5/z,by+fs*.8);
+  g.restore();
+};
+
+/* ---- v134: seçili şekli tek başına dışa aktar (şeffaf PNG) ---- */
+const _openExport1=openExport;
+openExport=function(){
+  _openExport1();
+  const bd=document.querySelector('#modal .bd');const doc=D(),L=doc.layers[doc.active];
+  if(!bd||!L||!L.isVec||!VSELS.length)return;
+  const idx=VSELS.filter(i=>L.vec[i]);
+  bd.append(h('div',{class:'bcards',style:'grid-template-columns:1fr;margin-top:8px'},
+    h('button',{class:'card',style:'flex-direction:row;justify-content:flex-start;text-align:left;padding:10px 12px;gap:10px;align-items:center',onclick:async()=>{
+      const ub=unionBox(L,idx),pad=2;
+      const c=newCanvas(Math.max(1,Math.ceil(ub[2]-ub[0])+pad*2),Math.max(1,Math.ceil(ub[3]-ub[1])+pad*2)),g=c.getContext('2d');
+      g.translate(pad-ub[0],pad-ub[1]);idx.forEach(i=>vecDraw(g,L.vec[i]));
+      saveFile(await toBlob(c),slug(layerLabel(L))+'-secim.png');
+    }},h('span',{style:'display:flex;flex-direction:column;gap:2px'},h('b',null,'Seçili şekil (PNG şeffaf)'),h('span',{style:'font-weight:400;color:var(--muted);font-size:11.5px'},idx.length+' şekil, yalnızca seçilenler, kırpılmış')))));
+};
+
+/* ---- v135: hazır model kütüphanesi (ekran görüntülerindeki modeller: tek tıkla katman olarak eklenir) ---- */
+const MODEL_STYLE={
+  body:{fill:'#f3f4f6',stroke:'#1f2937',sw:2},
+  line:{fill:null,stroke:'#1f2937',sw:2},
+  stitch:{fill:null,stroke:'#1f2937',sw:1.6,ln:{dash:[4,2],cap:'round'}},
+  button:{fill:'#ffffff',stroke:'#1f2937',sw:1.6}
+};
+const MIRX=pts=>pts.map(([x,y])=>[200-x,y]);
+const MP=(pts,role)=>({role:role||'body',kind:'poly',pts});
+const ML=(pts,role)=>({role:role||'line',kind:'line',pts});
+const MS=(pts)=>({role:'stitch',kind:'line',pts});
+const MB=(x,y,w,h)=>({role:'button',kind:'ellipse',x,y,w,h});
+const MODELS=[
+ {id:'puf_bluz',name:'Puf kollu bluz (korse)',spec:()=>[
+   MP([[70,20],[130,20],[150,40],[140,70],[140,120],[135,150],[65,150],[60,120],[60,70],[50,40]]),
+   MP([[60,40],[25,55],[12,95],[30,105],[42,88],[60,90]]), MP(MIRX([[60,40],[25,55],[12,95],[30,105],[42,88],[60,90]])),
+   MP([[22,100],[42,100],[44,110],[20,110]]), MP(MIRX([[22,100],[42,100],[44,110],[20,110]])),
+   ML([[100,70],[100,150]]), MS([[90,80],[110,96]]), MS([[110,80],[90,96]]), MS([[90,104],[110,120]]), MS([[110,104],[90,120]]),
+   ML([[62,118],[138,118]],'line'), MS([[18,70],[32,80]]), MS([[182,70],[168,80]]),
+   MB(94,126,4,4), MB(94,140,4,4)
+ ]},
+ {id:'gomlek',name:'Gömlek',spec:()=>[
+   MP([[70,30],[130,30],[138,45],[140,150],[60,150],[62,45]]),
+   MP([[62,45],[30,60],[18,160],[30,162],[58,80]]), MP(MIRX([[62,45],[30,60],[18,160],[30,162],[58,80]])),
+   MP([[80,28],[100,40],[120,28],[125,38],[100,50],[75,38]]),
+   ML([[100,50],[100,150]]), MS([[104,50],[104,150]]),
+   MB(96,60,6,6), MB(96,80,6,6), MB(96,100,6,6), MB(96,120,6,6),
+   MP([[112,62],[128,62],[128,80],[112,80]]), MS([[114,64],[126,64],[126,78],[114,78]])
+ ]},
+ {id:'askili_elbise',name:'Askılı elbise (kuşaklı)',spec:()=>[
+   MP([[78,40],[122,40],[120,80],[140,110],[150,255],[50,255],[60,110],[80,80]]),
+   MP([[76,40],[84,40],[80,8],[72,8]]), MP(MIRX([[76,40],[84,40],[80,8],[72,8]])),
+   ML([[78,40],[100,60],[122,40]]),
+   MP([[60,118],[140,118],[136,130],[64,130]]), MP([[100,130],[122,160],[96,150]]), MP([[100,130],[78,160],[104,150]]),
+   MS([[50,250],[150,250]]), MS([[62,160],[138,160]])
+ ]},
+ {id:'pantolon',name:'Geniş paça pantolon',spec:()=>[
+   MP([[60,20],[140,20],[146,255],[108,255],[100,90],[92,255],[54,255]]),
+   MP([[60,20],[140,20],[140,34],[60,34]]),
+   ML([[100,36],[100,92]]), MS([[78,48],[78,62]]), MS([[122,48],[122,62]]),
+   ML([[80,40],[86,250]],'line'), MS([[90,100],[88,250]]), MS([[110,100],[112,250]]), MS([[120,40],[114,250]])
+ ]},
+ {id:'ceket',name:'Ceket (cepli)',spec:()=>[
+   MP([[64,30],[136,30],[142,50],[140,200],[60,200],[58,50]]),
+   MP([[64,40],[36,60],[26,160],[40,162],[60,70]]), MP(MIRX([[64,40],[36,60],[26,160],[40,162],[60,70]])),
+   MP([[80,28],[100,58],[120,28]]),
+   ML([[100,58],[100,200]]),
+   MP([[72,120],[92,120],[92,140],[72,140]]), MP([[108,120],[128,120],[128,140],[108,140]]),
+   MS([[74,122],[90,122],[90,138],[74,138]]), MB(96,70,5,5), MB(96,95,5,5), MB(96,120,5,5),
+   MS([[30,150],[48,152]]), MS([[152,150],[170,152]])
+ ]},
+ {id:'tisort',name:'Tişört',spec:()=>[
+   MP([[70,30],[130,30],[138,45],[140,160],[60,160],[62,45]]),
+   MP([[62,45],[30,60],[24,95],[40,100],[62,80]]), MP(MIRX([[62,45],[30,60],[24,95],[40,100],[62,80]])),
+   MS([[78,30],[100,48],[122,30]]), MS([[60,150],[140,150]])
+ ]},
+ {id:'pilili_etek',name:'Pliseli etek',spec:()=>[
+   MP([[60,30],[140,30],[140,44],[60,44]]),
+   MP([[60,44],[140,44],[160,220],[40,220]]),
+   ML([[100,44],[64,220]]), ML([[100,44],[82,220]]), ML([[100,44],[100,220]]), ML([[100,44],[118,220]]), ML([[100,44],[136,220]]),
+   MS([[44,216],[156,216]])
+ ]}
+];
+function modelBuild(spec,doc){
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  const grow=(x,y)=>{x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y);};
+  spec.forEach(it=>{if(it.kind==='ellipse'){grow(it.x,it.y);grow(it.x+it.w,it.y+it.h);}else it.pts.forEach(q=>grow(q[0],q[1]));});
+  const k=Math.min((doc.h*.72)/Math.max(1,y1-y0),(doc.w*.8)/Math.max(1,x1-x0)),ox=doc.w/2-((x0+x1)/2)*k,oy=(doc.h-(y1-y0)*k)/2-y0*k;
+  const T=(x,y)=>[ox+x*k,oy+y*k];
+  return spec.map(it=>{const st=MODEL_STYLE[it.role]||MODEL_STYLE.body;
+    if(it.kind==='ellipse'){const a=T(it.x,it.y);return Object.assign({kind:'ellipse',x:a[0],y:a[1],w:it.w*k,h:it.h*k},JSON.parse(JSON.stringify(st)));}
+    return Object.assign({kind:it.kind,pts:it.pts.map(q=>T(q[0],q[1]))},JSON.parse(JSON.stringify(st)),it.kind==='line'?{}:{});});
+}
+function modelEkle(id){
+  const m=MODELS.find(x=>x.id===id);if(!m)return;const doc=D();
+  addVecLayer();const LV=doc.layers[doc.active];if(!LV)return;
+  LV.name=m.name;LV.vec=modelBuild(m.spec(),doc);VSELS=[];VSEL=-1;
+  vecRender(LV);renderSide();invalidate();markDirty();
+  toast(m.name+' eklendi. Parçaları seçip Kumaş sekmesinden kumaş verebilirsin.');
+}
+const _vecPanel6=vecPanel;
+vecPanel=function(){
+  const base=_vecPanel6();
+  return h('div',null,base,sec('Hazır modeller',
+    h('div',{class:'note'},'Tek tıkla yeni bir kıyafet katmanı açılır, parçaları (gövde, kol, yaka, cep, düğme, dikiş) hazır gelir. Parçayı seçip Kumaş sekmesinden ayrı ayrı kumaş verebilirsin.'),
+    h('div',{class:'btnrow'},...MODELS.map(m=>h('button',{class:'ibtn',onclick:()=>modelEkle(m.id)},m.name)))));
+};
+
+/* ---- v136: mockup: ürün fotoğrafı en alta, aktif tasarım katmanı Çarpma (multiply) moduna ---- */
+const _addImageLayer0=addImageLayer;
+addImageLayer=function(file,asRef){
+  if(!window.__mockup)return _addImageLayer0(file,asRef);
+  window.__mockup=false;
+  const doc=D();if(doc.layers.length>=maxLayers(doc)){toast('Katman sınırına ulaşıldı.');return;}
+  const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{
+    const L=makeLayer(doc,'Mockup fotoğrafı');
+    const k=Math.max(doc.w/img.width,doc.h/img.height),w=img.width*k,hh=img.height*k;
+    L.ctx.drawImage(img,(doc.w-w)/2,(doc.h-hh)/2,w,hh);URL.revokeObjectURL(url);
+    const prevActive=doc.active,T=doc.layers[prevActive],prevBlend=T?T.blend:null;
+    doc.layers.splice(0,0,L);doc.active=prevActive+1;
+    const TT=doc.layers[doc.active];if(TT)TT.blend='multiply';
+    structEntry(doc,()=>{doc.layers.splice(doc.layers.indexOf(L),1);if(TT)TT.blend=prevBlend;doc.active=prevActive;},
+      ()=>{doc.layers.splice(0,0,L);if(TT)TT.blend='multiply';doc.active=prevActive+1;},0);
+    invalidate();renderSide();markDirty();
+    toast('Mockup: fotoğraf en alta eklendi, aktif tasarım katmanı Çarpma moduna alındı.');
+  };
+  img.onerror=()=>{URL.revokeObjectURL(url);toast('Görsel açılamadı.');};img.src=url;
+};
+const _tabMore3=tabMore;
+tabMore=function(body){
+  _tabMore3(body);
+  body.append(sec('Mockup (ürün fotoğrafı üstüne tasarım)',
+    h('div',{class:'note'},'Önce tasarımı yapmış ol (aktif katman tasarım katmanı). Ürün fotoğrafını seçince en alta yerleşir, tasarımın Çarpma moduna geçer; kumaş dokusu ve kıvrımlar fotoğrafta görünür.'),
+    h('div',{class:'btnrow'},h('button',{class:'ibtn pri',onclick:()=>{window.__mockup=true;$('#fileImg').click();}},'Ürün fotoğrafı seç (mockup)'))));
+};
+
+/* ---- v137: renk kılavuzu (ton/tint üretici) ve ten tonu paleti (Color Guide ve Skin tone ekranlarından) ---- */
+const SKIN_TONES=['#fbe3cf','#f6d2b8','#eebe9a','#dca57c','#c48a62','#a76b47','#8a5232','#6b3d22'];
+function mixHex(a,b,t){const pa=[1,3,5].map(i=>parseInt(a.substr(i,2),16)),pb=[1,3,5].map(i=>parseInt(b.substr(i,2),16));return'#'+pa.map((v,i)=>Math.round(v+(pb[i]-v)*t).toString(16).padStart(2,'0')).join('');}
+function colorGuide(base){
+  const shades=[1,.85,.7,.55,.4].map(t=>mixHex(base,'#000000',1-t));
+  const tints=[.15,.3,.45,.6,.75].map(t=>mixHex(base,'#ffffff',t));
+  return{shades,tints};
+}
+const _tabColor0=tabColor;
+tabColor=function(body){
+  _tabColor0(body);
+  const base=S.target==='bg'?S.bg:S.fg,g=colorGuide(base);
+  const sw=(c)=>h('button',{class:'sw',title:c+' (seç)',style:'width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:'+c,onclick:()=>setFg(c,true)},'');
+  body.append(sec('Renk kılavuzu (ton ve tint)',
+    h('div',{class:'note'},'Seçili rengin koyu tonları (shades) ve açık tintleri. Bir kutuya dokunarak ana renk yap.'),
+    h('div',{class:'btnrow'},...g.shades.map(sw)),
+    h('div',{class:'btnrow'},...g.tints.map(sw))),
+    sec('Ten tonları',
+    h('div',{class:'note'},'Figür ve model çizimleri için ten tonları. Dokunarak seç.'),
+    h('div',{class:'btnrow'},...SKIN_TONES.map(sw))));
+};
+
+/* ---- v138: Pathfinder ek işlemleri (Böl, Kırp, Arkadan çıkar, Kontura çevir), kalıp işaretleri (dikiş payı, ip yönü, çentik), hızlı erişim ---- */
+function vecPF2(op){
+  const L=D().layers[D().active];
+  if(!L||!L.isVec){toast('Vektör katmanı seç.');return;}
+  if(op==='outline'){
+    if(!VSELS.length){toast('Önce şekil seç.');return;}
+    vecCommitList(L,()=>{VSELS.forEach(i=>{const s=L.vec[i];if(!s)return;s.fill=null;s.stroke=s.stroke||S.fg;s.sw=s.sw||S.size||2;delete s.fab;});});
+    renderSide();invalidate();toast('Seçili şekiller kontura çevrildi (dolgu kaldırıldı).');return;
+  }
+  if(VSELS.length!==2){toast('Bu işlem için tam 2 şekil seç (Shift ile). Üstteki katman ön kabul edilir.');return;}
+  const[i,j]=[...VSELS].sort((x,y)=>x-y);
+  const A=JSON.parse(JSON.stringify(L.vec[i])),B=JSON.parse(JSON.stringify(L.vec[j]));
+  const mk=(o,a,b)=>({kind:'pf',op:o,a:JSON.parse(JSON.stringify(a)),b:JSON.parse(JSON.stringify(b))});
+  let outs;
+  if(op==='divide')outs=[mk('int',A,B),mk('subtract',A,B),mk('subtract',B,A)];
+  else if(op==='trim')outs=[mk('subtract',A,B),mk('subtract',B,A)];
+  else if(op==='minusBack')outs=[mk('subtract',B,A)];
+  else return;
+  vecCommitList(L,()=>{L.vec.splice(j,1);L.vec.splice(i,1,...outs);});
+  VSELS=[];renderSide();invalidate();
+  toast({divide:'Böl: 3 parça oluştu (kesişim, A-B, B-A).',trim:'Kırp: kesişen kısım silindi.',minusBack:'Arkadan çıkar uygulandı.'}[op]);
+}
+function outwardNormals(P){
+  let area=0;for(let k=0;k<P.length;k++){const a=P[k],b=P[(k+1)%P.length];area+=a[0]*b[1]-b[0]*a[1];}
+  const sg=area>=0?1:-1;
+  return P.map((p,k)=>{const q=P[(k+1)%P.length],dx=q[0]-p[0],dy=q[1]-p[1],l=Math.hypot(dx,dy)||1;return[sg*dy/l,-sg*dx/l];});
+}
+function kalipIsaretEkle(kind,d){
+  const L=D().layers[D().active];
+  if(!L||!L.isVec||!VSELS.length){toast('Önce bir şekil seç.');return;}
+  const sh=L.vec[VSELS[0]];if(!sh)return;
+  const col=S.fg,sw=Math.max(1.5,S.size*.08||2);
+  const out=[];
+  if(kind==='seam'){
+    if(!sh.pts){toast('Dikiş payı için çokgen (poly) şekil seç.');return;}
+    const P=sh.pts,N=outwardNormals(P),n=P.length,off=P.map((p,k)=>{const n1=N[(k-1+n)%n],n2=N[k];let bx=n1[0]+n2[0],by=n1[1]+n2[1];const bl=Math.hypot(bx,by)||1;bx/=bl;by/=bl;const cosh=Math.max(.35,bx*n1[0]+by*n1[1]);return[p[0]+bx*d/cosh,p[1]+by*d/cosh];});
+    out.push({kind:'poly',pts:off,fill:null,stroke:col,sw,ln:{dash:[4,2],cap:'round',join:'round'}});
+  } else if(kind==='grain'){
+    const b=vecBBox(sh),cx=(b[0]+b[2])/2,y0=b[1]+(b[3]-b[1])*.15,y1=b[3]-(b[3]-b[1])*.15;
+    out.push({kind:'line',pts:[[cx,y0],[cx,y1]],fill:null,stroke:col,sw,ln:{arrowS:true,arrowE:true,arrowSize:Math.max(12,sw*4),cap:'round'}});
+  } else if(kind==='notch'){
+    if(!sh.pts){toast('Çentik için çokgen şekil seç.');return;}
+    const P=sh.pts,N=outwardNormals(P),n=P.length;
+    for(let k=0;k<n;k++){const p=P[k],q=P[(k+1)%n],len=Math.hypot(q[0]-p[0],q[1]-p[1]);if(len<40)continue;
+      const mx=(p[0]+q[0])/2,my=(p[1]+q[1])/2,tx=(q[0]-p[0])/len,ty=(q[1]-p[1])/len,nn=N[k],r=Math.max(4,sw*2.5);
+      out.push({kind:'poly',pts:[[mx-tx*r,my-ty*r],[mx+nn[0]*r*1.6,my+nn[1]*r*1.6],[mx+tx*r,my+ty*r]],fill:col,stroke:null,sw:1});}
+    if(!out.length){toast('Çentik için en az 40 px uzunluğunda kenar gerekir.');return;}
+  }
+  vecCommitList(L,()=>{out.forEach(x=>L.vec.push(x));});
+  renderSide();invalidate();toast({seam:'Dikiş payı çizgisi eklendi.',grain:'İp yönü oku eklendi.',notch:'Çentikler eklendi ('+out.length+').'}[kind]);
+}
+const _vecPanel7=vecPanel;
+vecPanel=function(){
+  const base=_vecPanel7();const doc=D(),L=doc.layers[doc.active];
+  if(!L||!L.isVec)return base;
+  const seamIn=h('input',{type:'number',value:String(S.seamD||12),style:'width:80px','aria-label':'Dikiş payı (px)',onchange:e=>{S.seamD=+e.target.value||12;}});
+  return h('div',null,base,
+    sec('Pathfinder ek işlemleri (2 şekil seçili)',
+      h('div',{class:'btnrow'},
+        h('button',{class:'ibtn',onclick:()=>vecPF2('divide')},'Böl'),
+        h('button',{class:'ibtn',onclick:()=>vecPF2('trim')},'Kırp'),
+        h('button',{class:'ibtn',onclick:()=>vecPF2('minusBack')},'Arkadan çıkar'),
+        h('button',{class:'ibtn',onclick:()=>vecPF2('outline')},'Kontura çevir')),
+      h('div',{class:'note'},'Shift ile iki şekil seç. Listede altta yazan şekil arkada, üstteki ön kabul edilir. Kontura çevir seçili şekillerin dolgusunu kaldırır, çizgi bırakır.')),
+    sec('Kalıp işaretleri (dikiş, ip yönü, çentik)',
+      h('div',{class:'row'},h('label',null,'Dikiş payı'),seamIn,h('span',{class:'note'},'px')),
+      h('div',{class:'btnrow'},
+        h('button',{class:'ibtn',onclick:()=>kalipIsaretEkle('seam',+seamIn.value||12)},'Dikiş payı çiz'),
+        h('button',{class:'ibtn',onclick:()=>kalipIsaretEkle('grain')},'İp yönü oku'),
+        h('button',{class:'ibtn',onclick:()=>kalipIsaretEkle('notch')},'Çentik ekle')),
+      h('div',{class:'note'},'Parçayı seç, sonra işareti ekle. Dikiş payı kesikli çizgi olarak dış tarafa çizilir; ip yönü çift uçlu ok; çentik kenar ortasına üçgen koyar.')));
+};
+/* hızlı erişim satırı: Araç sekmesinin başında en sık kullanılan işlemler */
+const _tabTool1=tabTool;
+tabTool=function(body){
+  _tabTool1(body);
+  if(S.tool==='select')return;
+  body.prepend(h('div',{class:'btnrow',style:'margin-bottom:8px'},
+    h('button',{class:'ibtn',onclick:()=>{if(typeof undo==='function')undo();},title:'Geri al'},'↶ Geri'),
+    h('button',{class:'ibtn',onclick:()=>{if(typeof redo==='function')redo();},title:'Yinele'},'↷ Yinele'),
+    h('button',{class:'ibtn',onclick:()=>{S.guard=S.guard!==false?false:true;renderSide();},title:'Pano dışına taşmayı aç/kapat'},'Sınır: '+(S.guard!==false?'açık':'kapalı')),
+    h('button',{class:'ibtn',onclick:openExport,title:'Dışa aktar'},'Dışa aktar'),
+    h('button',{class:'ibtn',onclick:openTechSheet,title:'Teknik föy'},'Teknik föy')));
+};
+
+/* ---- v139: arayüz çeşitlendirme: renk paleti seçimi + seçimde yüzen araç çubuğu ---- */
+const ACCENTS={yesil:{a:'#15766a',f:'#ffffff',s:'#d2ebe6',n:'Petrol'},mor:{a:'#6d28d9',f:'#ffffff',s:'#ebe2fb',n:'Mor'},lacivert:{a:'#1e3a8a',f:'#ffffff',s:'#dbe4fb',n:'Lacivert'},bordo:{a:'#7f1d1d',f:'#ffffff',s:'#f5dede',n:'Bordo'}};
+function applyAccent(k){const c=ACCENTS[k]||ACCENTS.yesil;const st=document.documentElement.style;st.setProperty('--accent',c.a);st.setProperty('--accent-fg',c.f);st.setProperty('--accent-soft',c.s);S.accent=ACCENTS[k]?k:'yesil';try{localStorage.setItem('moda_accent',S.accent);}catch(e){}}
+try{applyAccent(localStorage.getItem('moda_accent')||'yesil');}catch(e){applyAccent('yesil');}
+const _selStyle=document.createElement('style');
+_selStyle.textContent='#selbar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:50;display:none;gap:6px;align-items:center;padding:6px 8px;background:var(--panel2);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.18);flex-wrap:wrap;max-width:94vw;justify-content:center}#selbar.on{display:flex}#selbar button{min-height:36px}';
+document.head.append(_selStyle);
+const SELBAR=document.createElement('div');SELBAR.id='selbar';SELBAR.setAttribute('role','toolbar');SELBAR.setAttribute('aria-label','Seçim araçları');document.body.append(SELBAR);
+function selbarFlip(axis){const doc=D(),L=doc.layers[doc.active];if(!L||!VSELS.length)return;const ub=unionBox(L,VSELS),cx=(ub[0]+ub[2])/2,cy=(ub[1]+ub[3])/2;
+  vecTransformSel(L,VSELS.slice(),axis==='h'?((x,y)=>[2*cx-x,y]):((x,y)=>[x,2*cy-y]));}
+function selbarUpdate(){
+  const doc=D(),L=doc.layers[doc.active];
+  const on=!!(L&&L.isVec&&VSELS.length&&S.mode==='design');
+  SELBAR.classList.toggle('on',on);if(!on){SELBAR.innerHTML='';return;}
+  const n=VSELS.filter(i=>L.vec[i]).length;
+  const b=(t,fn,title)=>h('button',{class:'ibtn',title:title||t,onclick:fn},t);
+  SELBAR.innerHTML='';
+  SELBAR.append(h('span',{class:'note',style:'padding:0 6px'},n+' şekil seçili'),
+    b('Çoğalt',()=>vecDuplicate()),
+    b('Yatay çevir',()=>selbarFlip('h')),
+    b('Dikey çevir',()=>selbarFlip('v')),
+    b('Kontura çevir',()=>vecPF2('outline')),
+    b('Sil',()=>vecDeleteSel()));
+}
+const _renderSide0=renderSide;
+renderSide=function(){_renderSide0.apply(this,arguments);try{selbarUpdate();}catch(e){}};
+const _tabMore4=tabMore;
+tabMore=function(body){
+  _tabMore4(body);
+  body.append(sec('Görünüm paleti',
+    h('div',{class:'note'},'Vurgu rengini seç. Seçim tarayıcıda saklanır, bir sonraki açılışta aynı kalır.'),
+    h('div',{class:'btnrow'},...Object.entries(ACCENTS).map(([k,c])=>h('button',{class:'ibtn',title:c.n,'aria-pressed':String((S.accent||'yesil')===k),onclick:()=>{applyAccent(k);renderSide();toast('Renk paleti: '+c.n);},style:'min-width:110px;background:'+c.a+';color:#fff;border-color:'+c.a},c.n)))));
+};
+
+/* ---- v140: arayüz kartları (açılır bölümler) ve sekme ikonları ---- */
+const _secStyle=document.createElement('style');
+_secStyle.textContent='.sec>h4{cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;padding:6px 8px;margin:-6px -8px 6px;border-radius:9px;background:var(--panel2);border:1px solid var(--line)}.sec>h4:hover{border-color:var(--accent)}.sec.coll>:not(h4){display:none}.sec.coll{padding-bottom:0}#sideTabs button .tic{margin-right:5px;opacity:.9}';
+document.head.append(_secStyle);
+const _sec0=sec;
+sec=function(title,...kids){
+  const el=_sec0(title,...kids);
+  if(!title)return el;
+  const hd=el.querySelector('h4');if(!hd)return el;
+  const key='moda_sec_'+String(title);
+  let closed=false;try{closed=localStorage.getItem(key)==='1';}catch(e){}
+  if(closed)el.classList.add('coll');
+  const label=String(title);
+  const apply=()=>{const c=el.classList.contains('coll');hd.textContent=(c?'▸ ':'▾ ')+label;hd.setAttribute('role','button');hd.tabIndex=0;hd.setAttribute('aria-expanded',String(!c));};
+  const toggle=()=>{el.classList.toggle('coll');try{localStorage.setItem(key,el.classList.contains('coll')?'1':'0');}catch(e){}apply();};
+  hd.addEventListener('click',toggle);
+  hd.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle();}});
+  apply();return el;
+};
+const SIDE_ICONS={'Renk':'🎨','Araç':'🛠','Katman':'▤','Manken':'🧍','Giysi':'👗','Kumaş':'🧵','Süs':'✨','Ayar':'⚙'};
+const _renderSide1=renderSide;
+renderSide=function(){
+  _renderSide1.apply(this,arguments);
+  try{document.querySelectorAll('#sideTabs button').forEach(b=>{const t=b.textContent.trim();if(SIDE_ICONS[t]&&!b.querySelector('.tic')){const sp=document.createElement('span');sp.className='tic';sp.textContent=SIDE_ICONS[t];b.prepend(sp);}});}catch(e){}
+};
+
+/* ---- v141: ana ekran: üst çubuk etiketleri, mod sekmesi ikonları, Yeni tasarım düğmesi ---- */
+(function mainScreen(){
+  const st=document.createElement('style');
+  st.textContent='.tlbl{display:none}@media (min-width:1000px){.tlbl{display:inline;margin-left:6px;font-size:12.5px;font-weight:600}}#modes button .mic{margin-right:6px}#modes button{display:inline-flex;align-items:center}#btnNew{font-weight:600}';
+  document.head.append(st);
+  const lab=(id,text)=>{const b=document.getElementById(id);if(!b||b.querySelector('.tlbl')||b.textContent.trim().length)return;const sp=document.createElement('span');sp.className='tlbl';sp.textContent=text;b.append(sp);};
+  lab('btnUndo','Geri');lab('btnRedo','Yinele');lab('btnGallery','Projelerim');lab('btnExport','Dışa aktar');lab('btnTheme','Tema');lab('btnPanel','Paneller');
+  const grp=document.querySelector('header .grp')||document.getElementById('btnUndo').parentElement;
+  if(!document.getElementById('btnNew')){
+    const nb=document.createElement('button');nb.className='ibtn';nb.id='btnNew';nb.setAttribute('aria-label','Yeni tasarım');nb.title='Yeni tasarım (Alt+N)';
+    nb.innerHTML='<span aria-hidden="true">＋</span><span class="tlbl">Yeni</span>';
+    nb.addEventListener('click',()=>openNewDesign());
+    const gal=document.getElementById('btnGallery');gal.parentElement.insertBefore(nb,gal);
+  }
+  const icons={design:'✏️',pattern:'▦',board:'📓'};
+  document.querySelectorAll('#modes button').forEach(b=>{const k=b.dataset.mode;if(icons[k]&&!b.querySelector('.mic')){const sp=document.createElement('span');sp.className='mic';sp.setAttribute('aria-hidden','true');sp.textContent=icons[k];b.prepend(sp);}});
+})();
+
+/* ---- v142: sol araç şeridi: amaca göre gruplar ve grup başlıkları ---- */
+const TOOL_GROUPS=[['Çizim',['brush','eraser','fill','pick']],['Şekil',['shape','curve','pen','measure']],['Seçim',['select','move','hand']],['Süs',['stamp','trim','text']],['Efekt',['gradient','blur','smudge','crop','liquify']]];
+(function toolRailStyle(){const st=document.createElement('style');st.textContent='#tools .tgrp{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:10px 8px 3px;white-space:nowrap}#tools .tgrp:first-child{padding-top:2px}#tools .tsep{margin:6px 8px}';document.head.append(st);})();
+function renderTools(){
+  const el=$('#tools');el.innerHTML='';
+  const byId={};TOOLS.forEach(t=>{if(t[0]!=='|')byId[t[0]]=t;});
+  const used=new Set();
+  const mkBtn=t=>h('button',{class:'tool','aria-pressed':String(S.tool===t[0]),title:t[1]+' ('+t[3]+')',onclick:()=>setTool(t[0]),html:ic(t[2])+'<span>'+t[1]+'</span>'});
+  TOOL_GROUPS.forEach(([gname,ids],gi)=>{
+    const items=ids.map(id=>byId[id]).filter(Boolean);if(!items.length)return;
+    if(gi>0)el.append(h('div',{class:'tsep'}));
+    el.append(h('div',{class:'tgrp'},gname));
+    items.forEach(t=>{used.add(t[0]);el.append(mkBtn(t));});
+  });
+  TOOLS.forEach(t=>{if(t[0]!=='|'&&!used.has(t[0])){el.append(mkBtn(t));}});
 }
 </script>
 
