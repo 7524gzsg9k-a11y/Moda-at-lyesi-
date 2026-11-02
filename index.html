@@ -1337,6 +1337,7 @@ cv.addEventListener('pointerdown',e=>{
     if(ST.active){ST.kindCancel=true;cancelTransient();}
     panPtr=null;gestureStart();e.preventDefault();return;}
   const p=hoverXY(e);
+  {const LVa=doc.layers[doc.active];if(LVa&&LVa.isVec&&S.tool!=='shape'&&S.tool!=='hand'&&!spaceDown&&e.button===0&&!navTouch(e)){S.tool='shape';renderTools();renderSide();}}
   if(S.tool==='hand'||spaceDown||e.button===1||navTouch(e)){
     panPtr={id:e.pointerId,x:p.sx,y:p.sy,vx:doc.view.x,vy:doc.view.y};return;}
   if(e.button>0&&e.button!==5&&e.pointerType==='mouse'&&e.button===2)return;
@@ -1355,7 +1356,7 @@ cv.addEventListener('pointerdown',e=>{
     case'pick':pickColor(p.x,p.y,false);ST.picking=true;break;
     case'shape':{const LV=doc.layers[doc.active];
       if(LV&&LV.isVec&&S.shape.mode==='free'){FREE={pts:[[p.x,p.y]]};break;}
-      if(LV&&LV.isVec&&!S.lockEdit&&VSEL>=0&&LV.vec[VSEL]&&LV.vec[VSEL].pts){const z=doc.view.z;const hb=vecCornerHit(LV.vec[VSEL],p.x,p.y,z);if(hb){vsDrag={L:LV,i:VSEL,c:hb,pts0:LV.vec[VSEL].pts.map(q=>q.slice()),bb:vecBox(LV.vec[VSEL])};break;}const tol=9/z;const k=LV.vec[VSEL].pts.findIndex(q=>Math.hypot(q[0]-p.x,q[1]-p.y)<tol);if(k>=0){vnDrag={L:LV,i:VSEL,k};break;}}
+      if(LV&&LV.isVec&&!S.lockEdit&&VSEL>=0&&LV.vec[VSEL]&&LV.vec[VSEL].pts){const z=doc.view.z;const hb=vecCornerHit(LV.vec[VSEL],p.x,p.y,z);if(hb){vsDrag={L:LV,i:VSEL,c:hb,pts0:LV.vec[VSEL].pts.map(q=>q.slice()),bb:vecBox(LV.vec[VSEL])};break;}const tol=22/z;let k=-1,bd=tol;LV.vec[VSEL].pts.forEach((q,j)=>{const d=Math.hypot(q[0]-p.x,q[1]-p.y);if(d<bd){bd=d;k=j;}});if(k>=0){vnDrag={L:LV,i:VSEL,k};break;}}
       if(LV&&LV.isVec&&vecHit(LV,p.x,p.y)>=0){vecDown(LV,p,e);break;}
       if(LV&&LV.isVec&&!e.shiftKey)VSELS=[];
       SHAPE={x0:p.x,y0:p.y,x1:p.x,y1:p.y,shift:e.shiftKey};break;}
@@ -2716,7 +2717,7 @@ function drawVecNodes(g,doc){
   const z=doc.view.z;const[x0,y0,x1,y1]=vecBox(sh);g.save();g.lineWidth=1/z;g.setLineDash([4/z,3/z]);g.strokeStyle='#2563eb';g.strokeRect(x0,y0,x1-x0,y1-y0);g.setLineDash([]);
   g.lineWidth=1.5/z;g.fillStyle='#ffffff';
   for(const[cx,cy]of[[x0,y0],[x1,y0],[x0,y1],[x1,y1]]){g.beginPath();g.rect(cx-4.5/z,cy-4.5/z,9/z,9/z);g.fill();g.stroke();}
-  for(const q of sh.pts){g.beginPath();g.arc(q[0],q[1],3/z,0,6.2832);g.fill();g.stroke();}
+  for(const q of sh.pts){g.beginPath();g.arc(q[0],q[1],5/z,0,6.2832);g.fill();g.stroke();}
   g.restore();
 }
 function drawFitOverlay(g,doc){
@@ -3605,8 +3606,9 @@ function garShapes(doc,L){
   const G=garGeom(doc,L);if(!G)return null;
   const rec=garRecorder(garFillBase(L.gar.spec));
   try{renderGarmentG(G,{ctx:rec},Object.assign({},L.gar.spec,{edgeSoft:0}));}catch(e){console.warn('garShapes',e);return null;}
-  let shp=rec.rec.paths.map(pa=>{const pts=flattenOps(pa.ops);
+  let shp=rec.rec.paths.map(pa=>{let pts=flattenOps(pa.ops);
     const bl=c=>c&&/^#0{3,6}$/i.test(c);
+    if(pts.length>120)pts=pts.filter((_,i)=>i%Math.ceil(pts.length/120)===0);
     return {kind:'poly',pts,fill:bl(pa.fill)?null:(pa.fill||null),stroke:bl(pa.stroke)?null:(pa.stroke||null),sw:pa.sw||1};}).filter(sh=>sh.pts.length>2&&(sh.fill||sh.stroke));
   const fb=shp.filter(q=>q.fill);
   if(fb.length){const bx=[1e9,1e9,-1e9,-1e9];fb.forEach(q=>q.pts.forEach(([x,y])=>{bx[0]=Math.min(bx[0],x);bx[1]=Math.min(bx[1],y);bx[2]=Math.max(bx[2],x);bx[3]=Math.max(bx[3],y);}));
@@ -3622,7 +3624,7 @@ function garToVec(){
   L.name=(L.name||'Kıyafet')+' (vektör)';
   let bi=0,ba=-1;shp.forEach((q,i)=>{const[x0,y0,x1,y1]=vecBox(q);const ar=(x1-x0)*(y1-y0);if(ar>ba){ba=ar;bi=i;}});
   VSEL=bi;VSELS=[bi];
-  vecRender(L);renderSide();invalidate();
+  vecRender(L);S.tool='shape';renderTools();renderSide();invalidate();
   toast('Kıyafet '+shp.length+' vektör şekline dönüştürüldü.');
 }
 /* seçili vektör şeklinin kutusu ve köşe tutamaçları (ölçekleme) */
@@ -3685,7 +3687,12 @@ function addLayer(name){
   invalidate();renderSide();
 }
 function delLayer(){
-  const doc=D();if(doc.layers.length<2){toast('Son katman silinemez.');return;}
+  const doc=D();if(doc.layers.length<2){
+    /* son katman silinmez: içeriği temizlenir, katman boş olarak kalır */
+    const L=doc.layers[0];if(!L)return;
+    if(L.ctx)L.ctx.clearRect(0,0,doc.w,doc.h);
+    L.vec=L.isVec?[]:L.vec;L.gar=null;VSEL=-1;VSELS=[];
+    invalidate();renderSide();markDirty();toast('Son katman temizlendi (silinmez).');return;}
   const i=doc.active,L=doc.layers[i];doc.layers.splice(i,1);doc.active=Math.min(i,doc.layers.length-1);
   structEntry(doc,()=>{doc.layers.splice(i,0,L);doc.active=i;},()=>{doc.layers.splice(doc.layers.indexOf(L),1);doc.active=Math.min(i,doc.layers.length-1);},doc.w*doc.h*4);
   invalidate();renderSide();
