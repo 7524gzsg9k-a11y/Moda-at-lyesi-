@@ -647,8 +647,8 @@ function render(){
     for(let y=S.gridSize;y<doc.h;y+=S.gridSize){cx.moveTo(0,y);cx.lineTo(doc.w,y);}cx.stroke();}
   if(S.mode==='design'){drawFigureGuides(cx,doc);drawFitOverlay(cx,doc);drawNodeHandles(cx,doc);drawVecNodes(cx,doc);}
   if(S.sym!=='none'){cx.strokeStyle=cssC.acc;cx.globalAlpha=.7;cx.lineWidth=1.5/v.z;cx.setLineDash([8/v.z,6/v.z]);cx.beginPath();
-    if(S.sym==='mirror'||S.sym==='mirror4'||S.sym==='radial'||S.sym==='radialm'||S.sym==='shiftX'){cx.moveTo(doc.w/2,0);cx.lineTo(doc.w/2,doc.h);}
-    if(S.sym==='mirrorH'||S.sym==='shiftY'){cx.moveTo(0,doc.h/2);cx.lineTo(doc.w,doc.h/2);}
+    if(S.sym==='mirror'||S.sym==='mirror4'||S.sym==='radial'||S.sym==='radialm'||S.sym==='shiftX'||S.sym==='shift4'){cx.moveTo(doc.w/2,0);cx.lineTo(doc.w/2,doc.h);}
+    if(S.sym==='mirrorH'||S.sym==='shiftY'||S.sym==='shift4'){cx.moveTo(0,doc.h/2);cx.lineTo(doc.w,doc.h/2);}
     if(S.sym==='mirror4'){cx.moveTo(0,doc.h/2);cx.lineTo(doc.w,doc.h/2);}
     if(S.sym==='radial'||S.sym==='radialm'){for(let k=1;k<S.symN;k++){const a=Math.PI*2*k/S.symN-Math.PI/2;cx.moveTo(doc.w/2,doc.h/2);cx.lineTo(doc.w/2+Math.cos(a)*doc.w,doc.h/2+Math.sin(a)*doc.w);}}
     cx.stroke();cx.setLineDash([]);cx.globalAlpha=1;}
@@ -759,6 +759,7 @@ function symMats(doc){
   else if(S.sym==='mirrorH')m.push([1,0,0,-1,0,hh]);
   else if(S.sym==='shiftX')m.push([1,0,0,1,w/2,0]);
   else if(S.sym==='shiftY')m.push([1,0,0,1,0,hh/2]);
+  else if(S.sym==='shift4'){m.push([1,0,0,1,w/2,0],[1,0,0,1,0,hh/2],[1,0,0,1,w/2,hh/2]);}
   else if(S.sym==='mirror4'){m.push(mir,[1,0,0,-1,0,hh],[-1,0,0,-1,w,hh]);}
   else if(S.sym==='radial'||S.sym==='radialm'){
     const n=S.symN,x0=w/2,y0=hh/2;
@@ -3120,7 +3121,7 @@ function renderQuick(){
     q.append(h('div',{class:'qs'},'Opaklık',oI,h('b',null,Math.round(S.opacity*100)+'%')));
   }
   const sym=h('select',{'aria-label':'Simetri',onchange:e=>{S.sym=e.target.value;invalidate();renderSide();}},
-    [['none','Simetri yok'],['mirror','Ayna: yandan (dikey eksen)'],['mirrorH','Ayna: üstten aşağı (yatay eksen)'],['shiftX','Aynasız: yandan kaydır'],['shiftY','Aynasız: üstten aşağı kaydır'],['mirror4','Dörtlü ayna'],['radial','Radyal'],['radialm','Radyal + ayna']].map(([v,t])=>h('option',{value:v,selected:S.sym===v},t)));
+    [['none','Simetri yok'],['mirror','Ayna: yandan (dikey eksen)'],['mirrorH','Ayna: üstten aşağı (yatay eksen)'],['shiftX','Aynasız: yandan kaydır'],['shiftY','Aynasız: üstten aşağı kaydır'],['shift4','Aynasız: dörtlü (yandan + üstten aşağı)'],['mirror4','Dörtlü ayna'],['radial','Radyal'],['radialm','Radyal + ayna']].map(([v,t])=>h('option',{value:v,selected:S.sym===v},t)));
   q.append(h('div',{class:'qs'},sym));
   q.append(h('button',{class:'ibtn','aria-pressed':String(S.grid),title:'Izgara',onclick:e=>{S.grid=!S.grid;e.currentTarget.setAttribute('aria-pressed',String(S.grid));invalidate();},html:ic('grid')}));
   q.append(h('div',{class:'spacer'}));
@@ -3424,7 +3425,7 @@ function tabTool(body){
   /* simetri */
   body.append(sec('Simetri ve ızgara',
     h('select',{'aria-label':'Simetri',onchange:e=>{S.sym=e.target.value;invalidate();renderQuick();renderSide();}},
-      [['none','Yok'],['mirror','Ayna: yandan'],['mirrorH','Ayna: üstten aşağı'],['shiftX','Aynasız: yandan'],['shiftY','Aynasız: üstten aşağı'],['mirror4','Dörtlü ayna'],['radial','Radyal'],['radialm','Radyal + ayna']].map(([v,t2])=>h('option',{value:v,selected:S.sym===v},t2))),
+      [['none','Yok'],['mirror','Ayna: yandan'],['mirrorH','Ayna: üstten aşağı'],['shiftX','Aynasız: yandan'],['shiftY','Aynasız: üstten aşağı'],['shift4','Aynasız: dörtlü'],['mirror4','Dörtlü ayna'],['radial','Radyal'],['radialm','Radyal + ayna']].map(([v,t2])=>h('option',{value:v,selected:S.sym===v},t2))),
     (S.sym==='radial'||S.sym==='radialm')?slider('Dilim sayısı',2,16,1,S.symN,v=>{S.symN=v;invalidate();},v=>v):null,
     toggleRow('Izgara',S.grid,v=>{S.grid=v;invalidate();renderQuick();renderSide();}),
     S.grid?slider('Izgara aralığı',20,400,10,S.gridSize,v=>{S.gridSize=v;invalidate();},v=>v+' px'):null));
@@ -4090,7 +4091,7 @@ function parseKeys(k){const parts=k.split('+'),key=parts.pop(),r={ctrl:false,shi
 function tw(t){return()=>setTool(t);}
 function curDoc(){return D();}
 function selModeTool(m){return()=>{S.sel.mode=m;setTool('select');renderSide();};}
-function cycleSym(){const o=['none','mirror','mirrorH','shiftX','shiftY','mirror4','radial','radialm'];S.sym=o[(o.indexOf(S.sym)+1)%o.length];renderQuick();renderSide();invalidate();toast('Simetri: '+({none:'kapalı',mirror:'ayna (yandan)',mirrorH:'ayna (üstten aşağı)',shiftX:'aynasız yandan',shiftY:'aynasız üstten aşağı',mirror4:'dörtlü ayna',radial:'radyal',radialm:'radyal + ayna'}[S.sym]));}
+function cycleSym(){const o=['none','mirror','mirrorH','shiftX','shiftY','shift4','mirror4','radial','radialm'];S.sym=o[(o.indexOf(S.sym)+1)%o.length];renderQuick();renderSide();invalidate();toast('Simetri: '+({none:'kapalı',mirror:'ayna (yandan)',mirrorH:'ayna (üstten aşağı)',shiftX:'aynasız yandan',shiftY:'aynasız üstten aşağı',shift4:'aynasız dörtlü',mirror4:'dörtlü ayna',radial:'radyal',radialm:'radyal + ayna'}[S.sym]));}
 function togglePanels(){document.body.classList.toggle('focus');requestAnimationFrame(()=>{resizeCv();fitView();});}
 function zoomBy(f){const r=$('#cvwrap').getBoundingClientRect();zoomAt(r.width/2,r.height/2,D().view.z*f);}
 function zoom100(){const r=$('#cvwrap').getBoundingClientRect();zoomAt(r.width/2,r.height/2,1);}
