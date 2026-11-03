@@ -7502,6 +7502,81 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
     const id=g.getImageData(0,0,w,h),d=id.data,R=rng(5);let ad=null;if(attr){const a2=newCanvas(w,h),x2=a2.getContext('2d');x2.drawImage(attr,0,0,w,h);ad=x2.getImageData(0,0,w,h).data;}
     for(let i=0;i<d.length;i+=4){const x=(i/4)%w,y=(i/4/w)|0;const st=ad?ad[i]/255:.35;const wv=((x+y)%4<2?12:-12)+((x-y+400)%6<3?6:-6);const l=.3*d[i]+.59*d[i+1]+.11*d[i+2]+wv+(R()-.5)*14;const v=128+(l-128)*st;d[i]=d[i+1]=d[i+2]=Math.max(0,Math.min(255,v));}
     g.putImageData(id,0,0);return c;};
+  /* v162: yeni listeden 65 çizim parçası — nakış, yapı detayları, kapama, kenar bitişi, ek destekler */
+  const along=(n,fn)=>{for(let i=0;i<n;i++)fn(i/(n-1||1),i);};
+  const HEM=(t)=>[.3+.4*t,.9];
+  Object.assign(TPL,{
+    /* nakış ve süsleme teknikleri */
+    'Zincir nakış':(c,W,H,f)=>{along(18,(t,i)=>{const a=t*Math.PI*2;EL(c,W,H,f,.5+.05*Math.cos(a),.3+.033*Math.sin(a),.009,.004,a+Math.PI/2);});CI(c,W,f,.5,.3,.012);},
+    'Kanaviçe':(c,W,H,f)=>{const M=['0110110','1111111','1111111','0111110','0011100','0001000'];M.forEach((r,y)=>[...r].forEach((b,x)=>{if(b==='1'){const u=.464+x*.012,v=.27+y*.008;dl(c,f,[[u-.004,v-.0027],[u+.004,v+.0027]]);dl(c,f,[[u+.004,v-.0027],[u-.004,v+.0027]]);}}));},
+    'Punch nakış':(c,W,H,f)=>{for(let a=0;a<6;a++){const an=a*Math.PI/3;EL(c,W,H,f,.5+.025*Math.cos(an),.3+.0167*Math.sin(an),.018,.008,an);}for(let k=0;k<30;k++){const an=k*2.4,r=.004+.0012*k;CI(c,W,f,.5+r*Math.cos(an)*.8,.3+r*Math.sin(an)*.5,.002);}},
+    'Brezilya nakışı':(c,W,H,f)=>{[[.47,.29],[.53,.29],[.5,.32]].forEach(([u,v])=>{c.beginPath();for(let t=0;t<14;t+=.25){const r=.0015*t;const q=f(u+r*Math.cos(t),v+r*.66*Math.sin(t));if(t)c.lineTo(...q);else c.moveTo(...q);}c.stroke();});EL(c,W,H,f,.45,.325,.012,.004,.5);EL(c,W,H,f,.55,.325,.012,.004,-.5);},
+    'Richelieu':(c,W,H,f)=>{for(let a=0;a<5;a++){const an=a*1.257-Math.PI/2;EL(c,W,H,f,.5+.022*Math.cos(an),.3+.015*Math.sin(an),.014,.006,an);dl(c,f,[[.5+.008*Math.cos(an),.3+.0053*Math.sin(an)],[.5+.036*Math.cos(an+.6),.3+.024*Math.sin(an+.6)]]);}CI(c,W,f,.5,.3,.006);CI(c,W,f,.5,.3,.042);},
+    'Ajur':(c,W,H,f)=>{dl(c,f,[[.36,.4],[.64,.4]]);dl(c,f,[[.36,.42],[.64,.42]]);for(let u=.365;u<.64;u+=.012){dl(c,f,[[u,.4],[u+.004,.41],[u,.42]]);}},
+    'Hardanger':(c,W,H,f)=>{[[.47,.28],[.53,.28],[.47,.32],[.53,.32]].forEach(([u,v])=>{rr(c,f,u-.022,v-.015,u+.022,v+.015);PL(c,f,[[u,v-.01],[u+.012,v],[u,v+.01],[u-.012,v]]);for(let k=-2;k<=2;k++)dl(c,f,[[u-.022,v+k*.006],[u-.016,v+k*.006]]);});},
+    'Tambur nakış':(c,W,H,f)=>{along(28,(t)=>{const u=.38+.24*t,v=.3+.03*Math.sin(t*Math.PI*3);EL(c,W,H,f,u,v,.005,.0025,Math.cos(t*Math.PI*3));});},
+    '3D nakış':(c,W,H,f)=>{for(let ring=0;ring<3;ring++){const r=.035-ring*.011,n=8-ring*2;for(let a=0;a<n;a++){const an=a*2*Math.PI/n+ring*.3;EL(c,W,H,f,.5+r*Math.cos(an),.3+r*.66*Math.sin(an),.016-ring*.004,.008-ring*.002,an);}}CI(c,W,f,.5,.3,.005,1);dl(c,f,[[.47,.335],[.5,.32],[.53,.335]],[3,2]);},
+    'Kordon nakış':(c,W,H,f)=>{for(const o of[0,.006]){c.beginPath();for(let t=0;t<=1;t+=.02){const a=t*Math.PI*3,r=.01+.035*t;const q=f(.5+(r+o)*Math.cos(a),.3+(r+o)*.66*Math.sin(a));if(t)c.lineTo(...q);else c.moveTo(...q);}c.stroke();}},
+    'Lazer kesim nakış':(c,W,H,f)=>{CI(c,W,f,.5,.3,.045);for(let a=0;a<12;a++){const an=a*Math.PI/6;CI(c,W,f,.5+.033*Math.cos(an),.3+.022*Math.sin(an),.006);}for(let a=0;a<6;a++){const an=a*Math.PI/3;PL(c,f,[[.5,.3],[.5+.018*Math.cos(an-.25),.3+.012*Math.sin(an-.25)],[.5+.018*Math.cos(an+.25),.3+.012*Math.sin(an+.25)]]);}},
+    'Ayna işleme':(c,W,H,f)=>{[.43,.5,.57].forEach(u=>{CI(c,W,f,u,.3,.012);CI(c,W,f,u,.3,.008);for(let a=0;a<12;a++){const an=a*Math.PI/6;dl(c,f,[[u+.012*Math.cos(an),.3+.008*Math.sin(an)],[u+.017*Math.cos(an+.26),.3+.0113*Math.sin(an+.26)]]);}});},
+    'Metal iplik nakışı':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.46,.33));c.quadraticCurveTo(...f(.5,.24),...f(.54,.33));c.quadraticCurveTo(...f(.5,.31),...f(.46,.33));c.stroke();for(let i=0;i<9;i++){const u=.47+i*.0075;dl(c,f,[[u,.325-i*.0005],[u+.004,.29+Math.abs(i-4)*.006]]);}},
+    'Boncuk işleme':(c,W,H,f)=>{for(let a=0;a<6;a++){const an=a*Math.PI/3;for(let k=1;k<=3;k++)CI(c,W,f,.5+k*.009*Math.cos(an),.3+k*.006*Math.sin(an),.0035,1);}CI(c,W,f,.5,.3,.005);},
+    'İplik aplik':(c,W,H,f)=>{c.beginPath();for(let t=0;t<=1;t+=.01){const a=t*Math.PI*2;const r=.03+.008*Math.sin(a*7);const q=f(.5+r*Math.cos(a),.3+r*.66*Math.sin(a));if(t)c.lineTo(...q);else c.moveTo(...q);}c.stroke();QC(c,f,[.47,.3],[.5,.27],[.53,.3]);QC(c,f,[.47,.31],[.5,.34],[.53,.31]);},
+    /* kıyafet yapı detayları */
+    'Korsaj':both((c,W,H,g)=>{tplPoly(c,g,[[.5,.2],[.41,.17],[.39,.3],[.4,.44],[.5,.5]]);[.43,.47].forEach(u=>dl(c,g,[[u,.19],[u,.46]],[6,4]));}),
+    'Drapaj paneli':(c,W,H,f)=>{tplPoly(c,f,[[.36,.46],[.64,.5],[.6,.66],[.38,.62],[.36,.46]]);for(let i=0;i<4;i++)QC(c,f,[.37,.49+i*.035],[.5,.53+i*.03],[.63,.52+i*.035]);},
+    'Kuyruk (Train)':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.38,.5));c.quadraticCurveTo(...f(.3,.75),...f(.26,.97));c.quadraticCurveTo(...f(.6,1),...f(.98,.99));c.quadraticCurveTo(...f(.78,.72),...f(.62,.5));c.stroke();dl(c,f,[[.55,.6],[.8,.97]],[8,6]);dl(c,f,[[.5,.6],[.6,.98]],[8,6]);},
+    'Etek kuyruğu':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.28,.8));c.quadraticCurveTo(...f(.5,.86),...f(.72,.8));c.lineTo(...f(.78,.96));c.quadraticCurveTo(...f(.5,.99),...f(.22,.96));c.closePath();c.stroke();},
+    'Godet':(c,W,H,f)=>{[.34,.42,.5,.58,.66].forEach(u=>{PL(c,f,[[u,.72],[u-.035,.9],[u+.035,.9]]);});},
+    'Gusset':both((c,W,H,g)=>{PL(c,g,[[.36,.25],[.33,.28],[.36,.32],[.39,.28]]);}),
+    'Balo baleni':both((c,W,H,g)=>{[.39,.42,.45,.48].forEach((u,i)=>{dl(c,g,[[u,.2+i*.01],[u,.46]]);CI(c,W,g,u,.2+i*.01,.003,1);CI(c,W,g,u,.46,.003,1);});}),
+    'İç korsaj':both((c,W,H,g)=>{dl(c,g,[[.5,.22],[.42,.2],[.41,.32],[.42,.45],[.5,.47]],[8,5]);dl(c,g,[[.42,.42],[.5,.42]],[3,3]);}),
+    'Bustier':both((c,W,H,g)=>{c.beginPath();c.moveTo(...g(.5,.24));c.bezierCurveTo(...g(.46,.17),...g(.4,.18),...g(.39,.24));c.lineTo(...g(.4,.42));c.lineTo(...g(.5,.46));c.stroke();dl(c,g,[[.445,.21],[.45,.44]],[5,3]);}),
+    'Peş':(c,W,H,f)=>{PL(c,f,[[.44,.12],[.56,.12],[.58,.48],[.6,.88],[.4,.88],[.42,.48]]);},
+    'Arka roba':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.36,.14));c.quadraticCurveTo(...f(.5,.24),...f(.64,.14));c.stroke();dl(c,f,[[.5,.22],[.49,.26],[.51,.26],[.5,.22]]);dl(c,f,[[.37,.16],[.5,.25],[.63,.16]],[5,4]);},
+    'Ön roba':(c,W,H,f)=>{dl(c,f,[[.37,.22],[.45,.25],[.5,.23],[.55,.25],[.63,.22]]);dl(c,f,[[.37,.235],[.45,.265],[.5,.245],[.55,.265],[.63,.235]],[5,4]);},
+    'Asimetrik panel':(c,W,H,f)=>{PL(c,f,[[.4,.13],[.48,.13],[.66,.62],[.56,.66]]);dl(c,f,[[.43,.15],[.6,.63]],[6,4]);},
+    'Katmanlı etek':(c,W,H,f)=>{[[.5,.62],[.62,.74],[.74,.88]].forEach(([v0,v1],i)=>{const hw=.13+i*.05;PL(c,f,[[.5-hw+.03,v0],[.5+hw-.03,v0],[.5+hw,v1],[.5-hw,v1]]);});},
+    'Çıkarılabilir etek':(c,W,H,f)=>{tplPoly(c,f,[[.36,.48],[.24,.86],[.76,.86],[.64,.48]]);dl(c,f,[[.36,.48],[.64,.48]],[8,6]);[.38,.44,.5,.56,.62].forEach(u=>{CI(c,W,f,u,.485,.005);CI(c,W,f,u,.485,.002,1);});},
+    'Çıkarılabilir kuyruk':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.4,.48));c.quadraticCurveTo(...f(.3,.8),...f(.16,.99));c.lineTo(...f(.84,.99));c.quadraticCurveTo(...f(.7,.8),...f(.6,.48));c.stroke();dl(c,f,[[.4,.48],[.6,.48]],[8,6]);[.42,.5,.58].forEach(u=>CI(c,W,f,u,.485,.005));},
+    'İç şort':both((c,W,H,g)=>{dl(c,g,[[.5,.5],[.37,.5],[.36,.66],[.48,.67],[.5,.6]],[6,4]);}),
+    'Drapeli göğüs':both((c,W,H,g)=>{for(let i=0;i<4;i++)QC(c,g,[.39,.2+i*.02],[.45,.26+i*.025],[.5,.24+i*.03]);}),
+    'Yan panel':both((c,W,H,g)=>{PL(c,g,[[.37,.24],[.41,.24],[.4,.88],[.33,.88]]);}),
+    'Omuz yapılandırması':both((c,W,H,g)=>{c.beginPath();c.moveTo(...g(.42,.11));c.quadraticCurveTo(...g(.3,.06),...g(.24,.14));c.lineTo(...g(.26,.2));c.quadraticCurveTo(...g(.32,.15),...g(.4,.16));c.stroke();dl(c,g,[[.27,.13],[.38,.13]],[4,3]);}),
+    /* özel kapama sistemleri */
+    'Gizli pat':(c,W,H,f)=>{rr(c,f,.48,.14,.52,.5);[.18,.25,.32,.39,.46].forEach(v=>{c.setLineDash([3,3]);CI(c,W,f,.5,v,.006);c.setLineDash([]);});},
+    'Düğmeli pat':(c,W,H,f)=>{rr(c,f,.48,.14,.52,.5);[.18,.24,.3,.36,.42,.47].forEach(v=>{CI(c,W,f,.5,v,.007);CI(c,W,f,.5,v,.002,1);});},
+    'Çift sıra kapama':(c,W,H,f)=>{[.44,.56].forEach(u=>[.22,.3,.38].forEach(v=>{CI(c,W,f,u,v,.008);dl(c,f,[[u-.003,v],[u+.003,v]]);}));dl(c,f,[[.43,.14],[.57,.46]]);},
+    'Mıknatıslı kapama':(c,W,H,f)=>{CI(c,W,f,.47,.3,.015);CI(c,W,f,.47,.3,.008,1);CI(c,W,f,.53,.3,.015);dl(c,f,[[.525,.3],[.535,.3]]);dl(c,f,[[.53,.295],[.53,.305]]);dl(c,f,[[.485,.3],[.515,.3]],[2,3]);},
+    'Cırt cırt kapama':(c,W,H,f)=>{rr(c,f,.44,.28,.5,.34);rr(c,f,.5,.28,.56,.34);zz(c,f,.445,.29,.495,.29,10,.003);zz(c,f,.445,.31,.495,.31,10,.003);zz(c,f,.445,.33,.495,.33,10,.003);for(let i=0;i<20;i++)CI(c,W,f,.505+(i%5)*.011,.285+((i/5)|0)*.013,.002,1);},
+    'Kanca-göz kapama':(c,W,H,f)=>{[.2,.25,.3,.35,.4].forEach(v=>{c.beginPath();c.moveTo(...f(.485,v));c.lineTo(...f(.5,v));c.bezierCurveTo(...f(.508,v),...f(.508,v+.008),...f(.5,v+.008));c.stroke();EL(c,W,H,f,.512,v+.004,.006,.003);});dl(c,f,[[.484,.18],[.484,.43]]);},
+    'Bağlamalı kapama':(c,W,H,f)=>{[.22,.32,.42].forEach(v=>{PL(c,f,[[.5,v],[.47,v-.01],[.47,v+.01]]);PL(c,f,[[.5,v],[.53,v-.01],[.53,v+.01]]);dl(c,f,[[.5,v],[.48,v+.04]]);dl(c,f,[[.5,v],[.52,v+.04]]);});},
+    'Düğüm kapama':(c,W,H,f)=>{c.beginPath();c.ellipse(...f(.5,.48),.02*W,.012*H,0,0,2*Math.PI);c.stroke();QC(c,f,[.38,.44],[.46,.46],[.48,.475]);QC(c,f,[.62,.44],[.54,.46],[.52,.475]);dl(c,f,[[.49,.49],[.46,.58],[.47,.6]]);dl(c,f,[[.51,.49],[.54,.58],[.53,.6]]);},
+    'Toggle kapama':(c,W,H,f)=>{[.24,.32,.4].forEach(v=>{rr(c,f,.46,v-.005,.49,v+.005);EL(c,W,H,f,.53,v,.012,.006);dl(c,f,[[.49,v],[.52,v]]);});},
+    'Klips kapama':(c,W,H,f)=>{PL(c,f,[[.46,.47],[.5,.47],[.5,.51],[.46,.51]]);PL(c,f,[[.5,.465],[.545,.47],[.55,.49],[.545,.51],[.5,.515]]);dl(c,f,[[.51,.48],[.535,.49],[.51,.5]]);dl(c,f,[[.36,.49],[.46,.49]]);dl(c,f,[[.55,.49],[.64,.49]]);},
+    /* dekoratif kenar bitişleri — etek ucu ve yaka */
+    'Scallop kenar':(c,W,H,f)=>{c.beginPath();for(let i=0;i<12;i++){const u=.3+i*.0333;const a=f(u,.9),m=f(u+.0167,.925),e=f(u+.0333,.9);if(!i)c.moveTo(...a);c.quadraticCurveTo(...m,...e);}c.stroke();dl(c,f,[[.3,.9],[.7,.9]],[4,4]);},
+    'Picot kenar':(c,W,H,f)=>{dl(c,f,[[.3,.9],[.7,.9]]);for(let i=0;i<40;i++){const u=.305+i*.01;EL(c,W,H,f,u,.904,.003,.0025);}},
+    'Merrow kenar':(c,W,H,f)=>{dl(c,f,[[.3,.895],[.7,.895]]);dl(c,f,[[.3,.905],[.7,.905]]);zz(c,f,.3,.9,.7,.9,120,.004);},
+    'Ham kenar':(c,W,H,f)=>{dl(c,f,[[.3,.89],[.7,.89]]);for(let i=0;i<60;i++){const u=.3+i*.00667,l=.006+((i*37)%7)*.002;dl(c,f,[[u,.89],[u+((i%3)-1)*.002,.89+l]]);}},
+    'Saçaklı kenar':(c,W,H,f)=>{dl(c,f,[[.3,.86],[.7,.86]]);for(let i=0;i<40;i++){const u=.302+i*.01;dl(c,f,[[u,.86],[u,.95]]);}},
+    'Kıvrımlı kenar':(c,W,H,f)=>{c.beginPath();for(let i=0;i<=80;i++){const u=.3+.4*i/80,v=.9+.008*Math.sin(i*1.1)+.004*Math.sin(i*2.7);const q=f(u,v);if(i)c.lineTo(...q);else c.moveTo(...q);}c.stroke();},
+    'Kontrast biyeli kenar':(c,W,H,f)=>{rr(c,f,.3,.885,.7,.905);c.beginPath();c.moveTo(...f(.38,.12));c.quadraticCurveTo(...f(.5,.24),...f(.62,.12));c.stroke();c.beginPath();c.moveTo(...f(.4,.12));c.quadraticCurveTo(...f(.5,.215),...f(.6,.12));c.stroke();},
+    'Tırtıklı kenar':(c,W,H,f)=>{c.beginPath();for(let i=0;i<=40;i++){const q=f(.3+i*.01,i%2?.91:.9);if(i)c.lineTo(...q);else c.moveTo(...q);}c.stroke();},
+    'Boru biyeli kenar':(c,W,H,f)=>{dl(c,f,[[.3,.895],[.7,.895]]);dl(c,f,[[.3,.905],[.7,.905]]);for(let i=0;i<20;i++)CI(c,W,f,.31+i*.02,.9,.003);c.beginPath();c.moveTo(...f(.36,.13));c.lineTo(...f(.36,.22));c.lineTo(...f(.64,.22));c.lineTo(...f(.64,.13));c.stroke();},
+    'Lazer kesim kenar':(c,W,H,f)=>{dl(c,f,[[.3,.88],[.7,.88]]);for(let i=0;i<13;i++){const u=.31+i*.03;PL(c,f,[[u,.89],[u+.012,.905],[u+.024,.89]]);CI(c,W,f,u+.012,.915,.004);}},
+    /* ek giyim destekleri */
+    'Omuz vatkası':both((c,W,H,g)=>{c.beginPath();c.moveTo(...g(.33,.14));c.quadraticCurveTo(...g(.36,.1),...g(.42,.12));c.quadraticCurveTo(...g(.38,.17),...g(.33,.14));c.stroke();dl(c,g,[[.345,.135],[.405,.125]],[3,3]);}),
+    'Göğüs pedi':both((c,W,H,g)=>{EL(c,W,H,g,.44,.25,.035,.022,-.2);EL(c,W,H,g,.44,.25,.025,.015,-.2);}),
+    'Bel korsesi':(c,W,H,f)=>{PL(c,f,[[.38,.4],[.62,.4],[.6,.54],[.4,.54]]);for(let i=0;i<5;i++){const v=.41+i*.025;CI(c,W,f,.48,v,.003);CI(c,W,f,.52,v,.003);if(i<4){dl(c,f,[[.48,v],[.52,v+.025]]);dl(c,f,[[.52,v],[.48,v+.025]]);}}[.42,.58].forEach(u=>dl(c,f,[[u,.41],[u,.53]],[4,3]));},
+    'Etek çemberi':(c,W,H,f)=>{[[.6,.12],[.72,.17],[.84,.22]].forEach(([v,r])=>EL(c,W,H,f,.5,v,r,.012));dl(c,f,[[.5,.5],[.5,.84]],[5,4]);},
+    'Krinolin':(c,W,H,f)=>{[[.56,.1],[.66,.15],[.76,.2],[.86,.25],[.95,.29]].forEach(([v,r])=>EL(c,W,H,f,.5,v,r,.01));[-1,-.5,0,.5,1].forEach(k=>QC(c,f,[.5+k*.08,.5],[.5+k*.18,.75],[.5+k*.29,.95]));},
+    'Tarlatan':(c,W,H,f)=>{tplPoly(c,f,[[.38,.5],[.2,.86],[.8,.86],[.62,.5],[.38,.5]]);for(let i=0;i<=12;i++){const t=i/12,ub=.2+.6*t,ut=.38+.24*t,ub2=.2+.6*Math.min(1,t+1/12),ut2=.38+.24*Math.min(1,t+1/12);if(i<12){dl(c,f,[[ub,.86],[ut2,.5]],[3,4]);dl(c,f,[[ub2,.86],[ut,.5]],[3,4]);}}},
+    'Kabarık tül altlık':(c,W,H,f)=>{for(let k=0;k<3;k++){const v=.62+k*.11,hw=.16+k*.06;c.beginPath();for(let i=0;i<10;i++){const u=.5-hw+i*hw/5;const a=f(u,v),m=f(u+hw/10,v+.03),e=f(u+hw/5,v);if(!i)c.moveTo(...a);c.quadraticCurveTo(...m,...e);}c.stroke();}dl(c,f,[[.4,.5],[.6,.5]]);},
+    'Diz pedi':both((c,W,H,g)=>{EL(c,W,H,g,.42,.72,.03,.028);dl(c,g,[[.395,.72],[.445,.72]],[3,3]);dl(c,g,[[.42,.7],[.42,.74]],[3,3]);}),
+    'Omuz destek pedi':both((c,W,H,g)=>{PL(c,g,[[.42,.12],[.3,.15],[.32,.23],[.4,.2]]);dl(c,g,[[.405,.135],[.32,.16],[.335,.215],[.395,.195],[.405,.135]],[4,3]);}),
+    'Dirsek yaması':both((c,W,H,g)=>{const a=g(.07,.44),b2=g(.15,.52);c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(b2[0],a[1]);c.lineTo(b2[0],b2[1]);c.lineTo(a[0],b2[1]);c.closePath();c.stroke();dl(c,g,[[.078,.448],[.142,.448],[.142,.512],[.078,.512],[.078,.448]],[3,3]);})
+  });
   /* v155: renk seçenekleri (30) — adlar karteladaki eşleşen tona, yoksa standart tona bağlanır; tıklayınca ön renk olur, seçili canlı kıyafet varsa onu da boyar */
   const RENK={'Beyaz':'#ffffff','Siyah':'#111315','Kırmızı':'#c8102e','Bordo':'#7b1e2b','Lacivert':'#1c2f63','Mavi':'#2c5fbf','Açık mavi':'#8ec3ea','Turkuaz':'#30b5b0','Yeşil':'#2e8b3e','Zümrüt yeşili':'#087a50','Haki':'#6b6b3a','Sarı':'#f2c919','Hardal':'#c99a1c','Turuncu':'#ef7a1a','Pembe':'#f2a1b7','Pudra':'#e8c4c0','Fuşya':'#d0257a','Mor':'#6a2c8e','Lila':'#b79ad6','Lavanta':'#c8b6e2','Bej':'#d8c3a5','Krem':'#f3e9d2','Kahverengi':'#6b4226','Taba':'#a0612f','Gri':'#8a8d91','Antrasit':'#383e42','Gümüş':'#c0c3c7','Altın':'#c9a23a','Bronz':'#a0703a','Bakır':'#b8734a'};
   const renkHex=(n)=>{try{for(const k of (typeof KARTELA!=='undefined'?KARTELA:[]))for(const e of (k.c||[]))if(e[0]===n)return e[1];}catch(e){}return RENK[n]||null;};
