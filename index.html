@@ -635,7 +635,7 @@ function render(){
   const W=cv.width,H=cv.height,v=doc.view;
   cx.setTransform(1,0,0,1,0,0);cx.clearRect(0,0,W,H);
   cx.setTransform(DPR*v.z,0,0,DPR*v.z,DPR*v.x,DPR*v.y);
-  cx.imageSmoothingEnabled=v.z<2.5;cx.imageSmoothingQuality='high';
+  cx.imageSmoothingEnabled=v.z<2.5;cx.imageSmoothingQuality=window.__busy?'low':'high';
   cx.save();cx.shadowColor='rgba(0,0,0,.30)';cx.shadowBlur=22*DPR;cx.shadowOffsetY=4*DPR;cx.fillStyle='#fff';cx.fillRect(0,0,doc.w,doc.h);cx.restore();
   if(doc.bg.visible){cx.fillStyle=doc.bg.color;cx.fillRect(0,0,doc.w,doc.h);}
   else{const p=cx.createPattern(checker,'repeat');p.setTransform(new DOMMatrix().scale(1/v.z));cx.fillStyle=p;cx.fillRect(0,0,doc.w,doc.h);}
@@ -5948,6 +5948,50 @@ function renderTools(){
   });
   TOOLS.forEach(t=>{if(t[0]!=='|'&&!used.has(t[0])){el.append(mkBtn(t));}});
 }
+
+/* === performans: çizim/sürükleme/tekerlek sırasında düşük örnekleme kalitesi, bırakınca yüksek kalite === */
+(function(){
+  const down=()=>{window.__busy=true;};
+  const up=()=>{if(window.__busy){window.__busy=false;invalidate();}};
+  window.addEventListener('pointerdown',down,true);
+  window.addEventListener('pointerup',up,true);
+  window.addEventListener('pointercancel',up,true);
+  window.addEventListener('wheel',()=>{window.__busy=true;clearTimeout(window.__wt);window.__wt=setTimeout(up,180);},{passive:true,capture:true});
+})();
+/* === Manken içinde kalsın: fırça izleri manken dış çizgisi (sınır) dışına taşmaz === */
+S.figClip=S.figClip||false;
+function figClipPath(doc){const ol=mannOutline(doc);if(!ol||ol.length<3)return null;
+  const p=new Path2D();ol.forEach((q,i)=>i?p.lineTo(q[0],q[1]):p.moveTo(q[0],q[1]));p.closePath();return p;}
+function figClipEnd(){if(ST._fc&&ST.doc){ST.doc.pctx.restore();}ST._fc=null;}
+const _ss_fc=strokeStart;
+strokeStart=function(x,y,p,e,kind){
+  figClipEnd();
+  const ok=_ss_fc.apply(this,arguments);
+  if(ok&&S.figClip&&kind!=='erase'&&(kind==='draw'||kind==='brush'||kind==='stamp'||kind==='trim'||!kind)){
+    const doc=ST.doc,path=figClipPath(doc);
+    if(path){const g=doc.pctx;g.save();g.setTransform(1,0,0,1,0,0);
+      g.globalCompositeOperation='destination-in';g.fill(path);   /* ilk nokta da sınır içinde kalsın */
+      g.globalCompositeOperation='source-over';g.clip(path);
+      ST._fc=true;}
+    else toast('Manken bulunamadı; kırpma uygulanmadı.');
+  }
+  return ok;
+};
+const _se_fc=strokeEnd;
+strokeEnd=function(){
+  const doc=ST.doc;
+  _se_fc.apply(this,arguments);
+  if(ST._fc&&doc){doc.pctx.restore();}
+  ST._fc=null;
+};
+const _tt_fc=tabTool;
+tabTool=function(body){
+  _tt_fc(body);
+  if(['brush','stamp','trim'].includes(S.tool)){
+    body.prepend(h('div',{class:'btnrow',style:'margin-bottom:8px'},
+      h('button',{class:'ibtn',onclick:()=>{S.figClip=!S.figClip;renderSide();},title:'Açıkken çizgiler yalnızca manken sınırının içinde kalır'},'Manken içinde: '+(S.figClip?'açık':'kapalı'))));
+  }
+};
 </script>
 
 </body></html>
