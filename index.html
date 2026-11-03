@@ -6563,6 +6563,8 @@ renderSide=function(){
     const p=geo.attributes.position,n=p.count,g=32,N=g+1;
     const X=new Float64Array(n),Y=new Float64Array(n),Z=new Float64Array(n);
     for(let i=0;i<n;i++){X[i]=p.getX(i);Y[i]=p.getY(i)+.9;Z[i]=p.getZ(i)+zOff;}
+    /* vücuda oturtma: panel genişliği gövde silüetini aşmaz (yan kenarlar bedene göre kesilir) */
+    for(let i=0;i<n;i++){const y=Y[i];if(y<.02)continue;const hw=y>1.5?.1:(y<.9?.2:v3BodyR(y))+.03;const ax=Math.abs(X[i]);if(ax>hw)X[i]=Math.sign(X[i])*hw;}
     const L=(a,b)=>Math.hypot(X[a]-X[b],Y[a]-Y[b],Z[a]-Z[b]);const E=[];
     for(let iy=0;iy<N;iy++)for(let ix=0;ix<N;ix++){const i=iy*N+ix;
       if(ix<g){E.push([i,i+1,L(i,i+1)]);}
