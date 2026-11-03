@@ -3913,9 +3913,9 @@ function tplPaintCanvas(s){const key=JSON.stringify([s.pts,s.paint,s.sw,s.drape,
     if(s.drape&&s.drape!=='none'&&typeof applyDrape==='function'){try{applyDrape(tg,w,h,s.drape);}catch(e){}}
     if(s.gloss){const gr=tg.createLinearGradient(0,0,w,h);gr.addColorStop(0,'rgba(255,255,255,0)');gr.addColorStop(.45,'rgba(255,255,255,'+(.45*s.gloss)+')');gr.addColorStop(.55,'rgba(255,255,255,'+(.2*s.gloss)+')');gr.addColorStop(1,'rgba(255,255,255,0)');tg.fillStyle=gr;tg.fillRect(0,0,w,h);}tg.globalCompositeOperation='destination-in';tg.drawImage(mc,0,0);pg.drawImage(tc,0,0);});
   const out={key,c:pc,x0,y0,k,w,h,masks,la};TPLPAINT.set(s,out);return out;}
-function tplPaintAt(L,i,x,y){const s=L.vec[i];if(!s||s.kind!=='tpl')return false;const b=vecBox(s),W0=b[2]-b[0]||1,H0=b[3]-b[1]||1;
+function tplPaintAt(L,i,x,y,ov){const s=L.vec[i];if(!s||s.kind!=='tpl')return false;const b=vecBox(s),W0=b[2]-b[0]||1,H0=b[3]-b[1]||1;
   const fd=(S.fill&&S.fill.src==='pattern'&&typeof fabDesc==='function')?fabDesc():null;
-  const seed=fd?{u:(x-b[0])/W0,v:(y-b[1])/H0,fab:fd}:{u:(x-b[0])/W0,v:(y-b[1])/H0,col:S.fg};
+  const seed=ov?Object.assign({u:(x-b[0])/W0,v:(y-b[1])/H0},ov):fd?{u:(x-b[0])/W0,v:(y-b[1])/H0,fab:fd}:{u:(x-b[0])/W0,v:(y-b[1])/H0,col:S.fg};
   const P=tplPaintCanvas(s);const px=((x-P.x0)*P.k)|0,py=((y-P.y0)*P.k)|0,ix=py*P.w+px;
   if(px<0||py<0||px>=P.w||py>=P.h)return false;if(P.la[ix*4+3]>40){toast('Çizginin üstüne değil, bölgenin içine dokun.');return true;}
   const R=tplRegion(P.la,P.w,P.h,px,py);if(!R)return false;
@@ -7206,6 +7206,12 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
   GENS.forEach(([id,n,cat,fn,bg])=>{if(!FABRICS.find(q=>q.id===id))FABRICS.push({id,n,cat,gen:(s,col)=>GT(s||256,col,fn,bg===null?sh(col,-.15):bg)});});
   /* v161: yeni listeden 54 yüzey — kumaş yüzeyleri, yüzey efektleri, baskı teknikleri, materyaller */
   const lg=(g,s,stops,x0,y0,x1,y1)=>{const gr=g.createLinearGradient(x0||0,y0||0,x1==null?s:x1,y1==null?s:y1);stops.forEach(([t,c])=>gr.addColorStop(t,c));g.fillStyle=gr;g.fillRect(0,0,s,s);};
+  /* dikişsiz çapraz geçiş: renk (x+y) mod s'ye göre — tekrarlanınca sınır görünmez */
+  const _cc=newCanvas(1,1).getContext('2d',{willReadFrequently:true});const rgba=(c)=>{_cc.clearRect(0,0,1,1);_cc.fillStyle=c;_cc.fillRect(0,0,1,1);return [..._cc.getImageData(0,0,1,1).data];};
+  const lgd=(g,s,stops)=>{const st=stops.map(([t,c])=>[t,rgba(c)]);const id=g.getImageData(0,0,s,s),d=id.data;const at=(t)=>{let i=1;while(i<st.length-1&&st[i][0]<t)i++;const a=st[i-1],b=st[i];const k=Math.max(0,Math.min(1,(t-a[0])/((b[0]-a[0])||1)));return a[1].map((v,j)=>v+(b[1][j]-v)*k);};
+    const lut=[];for(let i=0;i<s;i++)lut.push(at(i/s));for(let y=0;y<s;y++)for(let x=0;x<s;x++){const c=lut[(x+y)%s],o=(y*s+x)*4,al=c[3]/255;d[o]=d[o]*(1-al)+c[0]*al;d[o+1]=d[o+1]*(1-al)+c[1]*al;d[o+2]=d[o+2]*(1-al)+c[2]*al;d[o+3]=Math.max(d[o+3],c[3]);}g.putImageData(id,0,0);};
+  /* kenardan taşan lekeyi karşı kenarda da çiz (dikişsiz) */
+  const W9=(s,x,y,r,fn)=>{for(const ox of[-s,0,s])for(const oy of[-s,0,s]){const X=x+ox,Y=y+oy;if(X+r<0||X-r>s||Y+r<0||Y-r>s)continue;fn(X,Y);}};
   const RB=['#ff4d6d','#ffb74d','#fff176','#81c784','#4fc3f7','#7986cb','#ba68c8','#ff4d6d'];
   const dots=(g,s,R,n,r0,r1,cols)=>{for(let i=0;i<n;i++){g.fillStyle=cols[(R()*cols.length)|0];g.beginPath();g.arc(R()*s,R()*s,r0+R()*(r1-r0),0,6.28);g.fill();}};
   const emb=(g,x,y,r,col)=>{const gr=g.createRadialGradient(x-r*.35,y-r*.35,r*.1,x,y,r);gr.addColorStop(0,sh(col,.35));gr.addColorStop(.7,col);gr.addColorStop(1,sh(col,-.3));g.fillStyle=gr;g.beginPath();g.arc(x,y,r,0,6.28);g.fill();};
@@ -7228,27 +7234,27 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
    ['n_doubleface','Double-face','#2e4a7d',(g,s,R,c)=>{g.fillStyle='#c99a1c';g.beginPath();g.moveTo(s,0);g.lineTo(s,s);g.lineTo(0,s);g.fill();g.strokeStyle='#fff';g.setLineDash([6,4]);g.lineWidth=2;g.beginPath();g.moveTo(s,0);g.lineTo(0,s);g.stroke();g.setLineDash([]);noise(g,s,R,c,2000,.12,1);}],
    ['n_spacer','Spacer kumaş','#30b5b0',(g,s,R,c)=>{g.fillStyle=sh(c,-.35);for(let y=0;y<s;y+=14)for(let x=(y/14%2)*8;x<s;x+=16){g.beginPath();for(let a=0;a<6;a++)g.lineTo(x+5*Math.cos(a*1.047),y+5*Math.sin(a*1.047));g.fill();}}],
    ['n_sandvic','Sandviç kumaş','#8a8d91',(g,s,R,c)=>{for(let y=0;y<s;y+=32){g.fillStyle=sh(c,.2);g.fillRect(0,y,s,10);g.fillStyle=sh(c,-.15);g.fillRect(0,y+22,s,10);g.fillStyle=sh(c,.05);for(let x=0;x<s;x+=8)g.fillRect(x,y+10,2,12);}}],
-   ['n_seffaf','Şeffaf kaplama','#c8102e',(g,s,R,c)=>{lg(g,s,[[0,'rgba(255,255,255,.0)'],[.45,'rgba(255,255,255,.35)'],[.5,'rgba(255,255,255,.6)'],[.55,'rgba(255,255,255,.3)'],[1,'rgba(255,255,255,0)']]);}],
+   ['n_seffaf','Şeffaf kaplama','#c8102e',(g,s,R,c)=>{lgd(g,s,[[0,'rgba(255,255,255,.0)'],[.45,'rgba(255,255,255,.35)'],[.5,'rgba(255,255,255,.6)'],[.55,'rgba(255,255,255,.3)'],[1,'rgba(255,255,255,0)']]);}],
    /* özel yüzey efektleri */
    ['n_metal','Metalik efekt','#9aa3ad',(g,s,R,c)=>{lg(g,s,[[0,sh(c,-.3)],[.35,sh(c,.6)],[.5,sh(c,-.1)],[.7,sh(c,.5)],[1,sh(c,-.3)]],0,0,s,0);g.globalAlpha=.25;for(let y=0;y<s;y+=2){g.fillStyle=R()>.5?'#fff':'#000';g.fillRect(0,y,s,1);}g.globalAlpha=1;}],
-   ['n_holo','Holografik efekt','#c0c3c7',(g,s,R,c)=>{lg(g,s,RB.map((x,i)=>[i/7,x]));g.globalAlpha=.4;lg(g,s,[[0,'#fff'],[.5,'rgba(255,255,255,0)'],[1,'#fff']],s,0,0,s);g.globalAlpha=1;}],
+   ['n_holo','Holografik efekt','#c0c3c7',(g,s,R,c)=>{lgd(g,s,RB.map((x,i)=>[i/7,x]));for(let x=0;x<s;x+=4){g.fillStyle='rgba(255,255,255,'+(.12+.12*Math.sin(x/s*Math.PI*6))+')';g.fillRect(x,0,2,s);}}],
    ['n_holobaski','Hologram baskı','#c0c3c7',(g,s,R,c)=>{for(let i=0;i<40;i++){g.fillStyle=RB[i%7];g.globalAlpha=.8;const x=R()*s,y=R()*s;g.beginPath();g.moveTo(x,y-14);g.lineTo(x+12,y+8);g.lineTo(x-12,y+8);g.fill();}g.globalAlpha=1;},'#dfe3e8'],
    ['n_islak','Islak görünüm','#16254a',(g,s,R,c)=>{for(let i=0;i<14;i++){const x=R()*s,y=R()*s,r=10+R()*30;const gr=g.createRadialGradient(x,y,1,x,y,r);gr.addColorStop(0,'rgba(255,255,255,.75)');gr.addColorStop(.3,'rgba(255,255,255,.2)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.beginPath();g.ellipse(x,y,r,r*.4,R()*3,0,6.28);g.fill();}}],
    ['n_mat','Mat yüzey','#6b6b3a',(g,s,R,c)=>{noise(g,s,R,c,6000,.04,1);}],
-   ['n_sedef','Sedef efekt','#f3e9d2',(g,s,R,c)=>{lg(g,s,[[0,'#fbe9f0'],[.3,'#e8f3fb'],[.55,'#fffaf0'],[.8,'#efe6fb'],[1,'#fbe9f0']]);g.globalAlpha=.35;for(let i=0;i<6;i++){g.strokeStyle='#fff';g.lineWidth=10;g.beginPath();g.arc(R()*s,R()*s,30+R()*60,0,3);g.stroke();}g.globalAlpha=1;}],
+   ['n_sedef','Sedef efekt','#f3e9d2',(g,s,R,c)=>{lgd(g,s,[[0,'#fbe9f0'],[.3,'#e8f3fb'],[.55,'#fffaf0'],[.8,'#efe6fb'],[1,'#fbe9f0']]);g.globalAlpha=.35;for(let i=0;i<6;i++){g.strokeStyle='#fff';g.lineWidth=10;g.beginPath();g.arc(R()*s,R()*s,30+R()*60,0,3);g.stroke();}g.globalAlpha=1;}],
    ['n_simli','Simli yüzey','#2b2f36',(g,s,R,c)=>{dots(g,s,R,900,.5,1.6,['#fff','#f4d03a','#c0c3c7']);}],
    ['n_folyo','Folyo baskı','#111315',(g,s,R,c)=>{const gr=g.createLinearGradient(0,0,s,s);gr.addColorStop(0,'#8a6a1c');gr.addColorStop(.5,'#f6dc7a');gr.addColorStop(1,'#8a6a1c');g.fillStyle=gr;for(let y=0;y<4;y++)for(let x=0;x<4;x++)star(g,x*64+32+(y%2)*16,y*64+32,18);}],
    ['n_kabartma','Kabartma baskı','#efe3cb',(g,s,R,c)=>{for(let y=0;y<4;y++)for(let x=0;x<4;x++){const cx=x*64+32,cy=y*64+32;g.strokeStyle=sh(c,.4);g.lineWidth=5;g.beginPath();g.arc(cx-1,cy-1,16,0,6.28);g.stroke();g.strokeStyle=sh(c,-.25);g.lineWidth=3;g.beginPath();g.arc(cx+2,cy+2,16,0,6.28);g.stroke();}}],
    ['n_flok','Flok baskı','#f3e9d2',(g,s,R,c)=>{g.fillStyle='#6e1426';for(let y=0;y<4;y++)for(let x=0;x<4;x++){const cx=x*64+32+(y%2)*16,cy=y*64+32;for(let a=0;a<5;a++){g.beginPath();g.ellipse(cx+12*Math.cos(a*1.26),cy+12*Math.sin(a*1.26),10,6,a*1.26,0,6.28);g.fill();}}noise(g,s,R,'#6e1426',2500,.3,1.5);}],
    ['n_reflekt','Reflektif yüzey','#9aa3ad',(g,s,R,c)=>{for(let y=0;y<s;y+=4)for(let x=(y/4%2)*2;x<s;x+=4){g.fillStyle=R()>.5?'#ffffff':sh(c,.3);g.fillRect(x,y,2,2);}}],
-   ['n_fosfor','Fosforlu yüzey','#c6ff00',(g,s,R,c)=>{for(let i=0;i<20;i++){const x=R()*s,y=R()*s,r=20+R()*30;const gr=g.createRadialGradient(x,y,1,x,y,r);gr.addColorStop(0,'rgba(255,255,255,.7)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,2*r,2*r);}}],
-   ['n_yanardoner','Yanardöner yüzey','#6a2c8e',(g,s,R,c)=>{for(let x=0;x<s;x+=4){g.fillStyle=mixc('#6a2c8e','#1d8a5a',(Math.sin(x/s*Math.PI*4)+1)/2);g.fillRect(x,0,4,s);}g.globalAlpha=.2;lg(g,s,[[0,'#fff'],[.5,'rgba(0,0,0,0)'],[1,'#fff']]);g.globalAlpha=1;}],
+   ['n_fosfor','Fosforlu yüzey','#c6ff00',(g,s,R,c)=>{for(let i=0;i<20;i++){const r=20+R()*30;W9(s,R()*s,R()*s,r,(x,y)=>{const gr=g.createRadialGradient(x,y,1,x,y,r);gr.addColorStop(0,'rgba(255,255,255,.7)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,2*r,2*r);});}}],
+   ['n_yanardoner','Yanardöner yüzey','#6a2c8e',(g,s,R,c)=>{for(let x=0;x<s;x+=4){g.fillStyle=mixc('#6a2c8e','#1d8a5a',(Math.sin(x/s*Math.PI*4)+1)/2);g.fillRect(x,0,4,s);}lgd(g,s,[[0,'rgba(255,255,255,.2)'],[.5,'rgba(0,0,0,0)'],[1,'rgba(255,255,255,.2)']]);}],
    ['n_kristal','Kristal efekt','#b7d6f2',(g,s,R,c)=>{for(let y=0;y<s;y+=32)for(let x=0;x<s;x+=32){[[0,0,32,0,16,16],[32,0,32,32,16,16],[32,32,0,32,16,16],[0,32,0,0,16,16]].forEach((t,i)=>{g.fillStyle=sh(c,[.5,.1,-.2,.25][i]);g.beginPath();g.moveTo(x+t[0],y+t[1]);g.lineTo(x+t[2],y+t[3]);g.lineTo(x+t[4],y+t[5]);g.fill();});}}],
    /* baskı ve uygulama teknikleri */
    ['n_serigrafi','Serigrafi','#f6f1e7',(g,s,R,c)=>{g.fillStyle='#e94f37';g.beginPath();g.arc(90,100,60,0,6.28);g.fill();g.fillStyle='#1c2f63';g.globalAlpha=.9;g.fillRect(120,110,100,100);g.globalAlpha=1;g.strokeStyle='#e94f37';g.lineWidth=3;g.strokeRect(124,106,100,100);}],
-   ['n_sublim','Süblimasyon','#ffffff',(g,s,R,c)=>{for(let i=0;i<30;i++){const x=R()*s,y=R()*s,r=30+R()*60;const gr=g.createRadialGradient(x,y,1,x,y,r);const cc=RB[(R()*7)|0];gr.addColorStop(0,cc);gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,2*r,2*r);}}],
+   ['n_sublim','Süblimasyon','#ffffff',(g,s,R,c)=>{for(let i=0;i<30;i++){const x0=R()*s,y0=R()*s,r=30+R()*60,cc=RB[(R()*7)|0];W9(s,x0,y0,r,(x,y)=>{const gr=g.createRadialGradient(x,y,1,x,y,r);gr.addColorStop(0,cc);gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,2*r,2*r);});}}],
    ['n_transfer','Transfer baskı','#efe6d2',(g,s,R,c)=>{g.fillStyle='#fff';g.fillRect(48,48,160,160);g.strokeStyle='#888';g.strokeRect(48,48,160,160);g.fillStyle='#2f6f73';g.beginPath();g.arc(128,118,40,0,6.28);g.fill();g.fillStyle='#e9b44c';g.fillRect(78,168,100,16);}],
-   ['n_dtg','DTG baskı','#ffffff',(g,s,R,c)=>{for(let i=0;i<12;i++){g.filter='blur(6px)';g.fillStyle=RB[i%7];g.beginPath();g.arc(R()*s,R()*s,20+R()*30,0,6.28);g.fill();}g.filter='none';dots(g,s,R,1500,.5,1,['rgba(0,0,0,.25)']);}],
+   ['n_dtg','DTG baskı','#ffffff',(g,s,R,c)=>{for(let i=0;i<12;i++){g.filter='blur(6px)';g.fillStyle=RB[i%7];const r=20+R()*30;W9(s,R()*s,R()*s,r+12,(x,y)=>{g.beginPath();g.arc(x,y,r,0,6.28);g.fill();});}g.filter='none';dots(g,s,R,1500,.5,1,['rgba(0,0,0,.25)']);}],
    ['n_dtf','DTF baskı','#22272e',(g,s,R,c)=>{for(let k=0;k<5;k++){const x=40+R()*170,y=40+R()*170;g.fillStyle='#fff';g.beginPath();g.arc(x,y,30,0,6.28);g.fill();g.fillStyle=RB[k];g.beginPath();g.arc(x,y,25,0,6.28);g.fill();}}],
    ['n_rotasyon','Rotasyon baskı','#f7e9ec',(g,s,R,c)=>{for(let y=16;y<s;y+=42)for(let x=0;x<s;x+=42){g.fillStyle='#c8267c';for(let a=0;a<5;a++){g.beginPath();g.ellipse(x+21+8*Math.cos(a*1.26),y+8*Math.sin(a*1.26),7,4,a*1.26,0,6.28);g.fill();}g.fillStyle='#2f8a4f';g.beginPath();g.ellipse(x+36,y+10,8,3,.6,0,6.28);g.fill();}}],
    ['n_blok','Blok baskı','#f3ede2',(g,s,R,c)=>{g.fillStyle='#22345c';for(let y=0;y<4;y++)for(let x=0;x<4;x++){const cx=x*64+32+(R()-.5)*4,cy=y*64+32+(R()-.5)*4;g.globalAlpha=.75+R()*.25;g.beginPath();for(let a=0;a<8;a++){const r=a%2?10:22;g.lineTo(cx+r*Math.cos(a*.785),cy+r*Math.sin(a*.785));}g.fill();}g.globalAlpha=1;}],
@@ -7256,16 +7262,16 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
    ['n_gravur','Lazer gravür','#a0612f',(g,s,R,c)=>{g.strokeStyle=sh(c,-.45);g.lineWidth=1.5;for(let i=0;i<s;i+=16){g.beginPath();g.moveTo(i,0);g.lineTo(0,i);g.stroke();g.beginPath();g.moveTo(s-i,s);g.lineTo(s,s-i);g.stroke();}for(let k=0;k<4;k++){g.strokeRect((k%2)*128+40,(k>>1)*128+40,48,48);}}],
    ['n_kfolyo','Kabartma folyo','#1c2f63',(g,s,R,c)=>{for(let y=0;y<4;y++)for(let x=0;x<4;x++)emb(g,x*64+32,y*64+32,14,'#c9a23a');}],
    /* tasarım materyalleri */
-   ['n_metalderi','Metalik deri','#b06a3b',(g,s,R,c)=>{lg(g,s,[[0,sh(c,-.25)],[.4,sh(c,.5)],[.6,sh(c,.05)],[1,sh(c,-.3)]]);g.strokeStyle='rgba(0,0,0,.25)';for(let i=0;i<200;i++){g.beginPath();g.arc(R()*s,R()*s,3+R()*5,0,6.28);g.stroke();}}],
-   ['n_pvc','Şeffaf PVC','#e6f2fb',(g,s,R,c)=>{lg(g,s,[[0,'rgba(255,255,255,.2)'],[.3,'rgba(255,255,255,.85)'],[.35,'rgba(255,255,255,.2)'],[.7,'rgba(255,255,255,.6)'],[1,'rgba(255,255,255,.1)']]);}],
+   ['n_metalderi','Metalik deri','#b06a3b',(g,s,R,c)=>{lgd(g,s,[[0,sh(c,-.25)],[.4,sh(c,.5)],[.6,sh(c,.05)],[1,sh(c,-.25)]]);g.strokeStyle='rgba(0,0,0,.25)';for(let i=0;i<200;i++){g.beginPath();g.arc(R()*s,R()*s,3+R()*5,0,6.28);g.stroke();}}],
+   ['n_pvc','Şeffaf PVC','#e6f2fb',(g,s,R,c)=>{lgd(g,s,[[0,'rgba(255,255,255,.2)'],[.3,'rgba(255,255,255,.85)'],[.35,'rgba(255,255,255,.2)'],[.7,'rgba(255,255,255,.6)'],[1,'rgba(255,255,255,.1)']]);}],
    ['n_silikon','Silikon şerit','#ef7a1a',(g,s,R,c)=>{for(let y=0;y<s;y+=32){g.fillStyle=sh(c,.15);g.fillRect(0,y+6,s,20);g.fillStyle=sh(c,-.2);for(let x=8;x<s;x+=16){g.beginPath();g.arc(x,y+16,3,0,6.28);g.fill();}}}],
    ['n_neopren','Neopren','#111315',(g,s,R,c)=>{for(let y=0;y<s;y+=3)for(let x=(y/3%2)*1.5;x<s;x+=3){g.fillStyle=sh(c,R()>.5?.1:.02);g.fillRect(x,y,1.5,1.5);}}],
-   ['n_termo','Termoplastik detay','#30b5b0',(g,s,R,c)=>{for(let i=0;i<6;i++){const x=R()*s,y=R()*s;const gr=g.createRadialGradient(x-10,y-10,2,x,y,40);gr.addColorStop(0,sh(c,.45));gr.addColorStop(1,sh(c,-.1));g.fillStyle=gr;g.beginPath();g.ellipse(x,y,40,26,R()*3,0,6.28);g.fill();}}],
+   ['n_termo','Termoplastik detay','#30b5b0',(g,s,R,c)=>{for(let i=0;i<6;i++){const rot=R()*3;W9(s,R()*s,R()*s,42,(x,y)=>{const gr=g.createRadialGradient(x-10,y-10,2,x,y,40);gr.addColorStop(0,sh(c,.45));gr.addColorStop(1,sh(c,-.1));g.fillStyle=gr;g.beginPath();g.ellipse(x,y,40,26,rot,0,6.28);g.fill();});}}],
    ['n_3dbaski','3D baskı aksesuar','#f4f1ea',(g,s,R,c)=>{for(let y=0;y<s;y+=3){g.fillStyle=y%6?sh(c,-.04):sh(c,-.12);g.fillRect(0,y,s,2);}g.strokeStyle='#d0257a';g.lineWidth=4;for(let x=0;x<s;x+=32){g.beginPath();g.moveTo(x,0);g.lineTo(x+32,s);g.stroke();g.beginPath();g.moveTo(x+32,0);g.lineTo(x,s);g.stroke();}}],
    ['n_lazerderi','Lazer kesim deri','#4a3020',(g,s,R,c)=>{for(let y=0;y<s;y+=22)for(let x=(y/22%2)*11;x<s;x+=22){g.fillStyle='#e9e4da';g.beginPath();g.arc(x,y,6,0,6.28);g.fill();}g.strokeStyle='rgba(0,0,0,.2)';for(let i=0;i<120;i++){g.beginPath();g.arc(R()*s,R()*s,3,0,6.28);g.stroke();}}],
    ['n_karbon','Karbon fiber görünüm','#1c1c1c',(g,s,R,c)=>{for(let y=0;y<s;y+=8)for(let x=0;x<s;x+=8){const on=((x+y)/8)%2;const gr=on?g.createLinearGradient(x,y,x+8,y):g.createLinearGradient(x,y,x,y+8);gr.addColorStop(0,'#1a1a1a');gr.addColorStop(.5,'#4a4f55');gr.addColorStop(1,'#1a1a1a');g.fillStyle=gr;g.fillRect(x,y,8,8);}}],
    ['n_akrilikp','Akrilik parça','#cfe8ff',(g,s,R,c)=>{for(let k=0;k<4;k++){const x=(k%2)*128+20,y=(k>>1)*128+20;g.fillStyle='rgba(255,255,255,.55)';g.fillRect(x,y,88,88);g.strokeStyle='rgba(70,110,150,.7)';g.lineWidth=3;g.strokeRect(x,y,88,88);g.fillStyle='rgba(255,255,255,.9)';g.fillRect(x+6,y+6,30,6);}}],
-   ['n_pleksi','Pleksi detay','#f19bb7',(g,s,R,c)=>{lg(g,s,[[0,sh(c,.3)],[.48,sh(c,.05)],[.5,'#ffffff'],[.53,sh(c,.05)],[1,sh(c,-.15)]]);}],
+   ['n_pleksi','Pleksi detay','#f19bb7',(g,s,R,c)=>{lgd(g,s,[[0,sh(c,.3)],[.48,sh(c,.05)],[.5,'#ffffff'],[.53,sh(c,.05)],[1,sh(c,.3)]]);}],
    ['n_fosforserit','Fosforlu şerit','#22272e',(g,s,R,c)=>{for(let y=40;y<s;y+=128){g.shadowColor='#c6ff00';g.shadowBlur=18;g.fillStyle='#c6ff00';g.fillRect(0,y,s,40);}g.shadowBlur=0;}],
    ['n_reflektserit','Reflektif şerit','#1c2f63',(g,s,R,c)=>{for(let y=44;y<s;y+=128){g.fillStyle='#c0c3c7';g.fillRect(0,y,s,40);for(let yy=y;yy<y+40;yy+=3)for(let x=(yy%2);x<s;x+=3){g.fillStyle=R()>.5?'#ffffff':'#9aa3ad';g.fillRect(x,yy,1.5,1.5);}}}]
   ];
@@ -7577,6 +7583,35 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
     'Omuz destek pedi':both((c,W,H,g)=>{PL(c,g,[[.42,.12],[.3,.15],[.32,.23],[.4,.2]]);dl(c,g,[[.405,.135],[.32,.16],[.335,.215],[.395,.195],[.405,.135]],[4,3]);}),
     'Dirsek yaması':both((c,W,H,g)=>{const a=g(.07,.44),b2=g(.15,.52);c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(b2[0],a[1]);c.lineTo(b2[0],b2[1]);c.lineTo(a[0],b2[1]);c.closePath();c.stroke();dl(c,g,[[.078,.448],[.142,.448],[.142,.512],[.078,.512],[.078,.448]],[3,3]);})
   });
+  /* v163: moda stilleri (18) — her stil kumaşı ve renkleriyle boyanmış uyumlu bir kombin ekler */
+  const INP={'Elbise':[[.5,.7]],'Abiye':[[.5,.6]],'Gelinlik':[[.5,.75]],'Gömlek':[[.42,.4],[.58,.4],[.24,.4],[.76,.4]],'Pantolon':[[.42,.7],[.58,.7]],'Blazer':[[.4,.45],[.6,.45],[.22,.4],[.78,.4]],'Etek':[[.5,.65]],'Tişört':[[.44,.35]],'Jean':[[.42,.7],[.58,.7]],
+    'Trençkot':[[.4,.6],[.6,.6],[.4,.3],[.6,.3],[.22,.4],[.78,.4]],'Bluz':[[.44,.3]],'Bermuda':[[.42,.62],[.58,.62]],'Kazak':[[.42,.35]],'Mont':[[.42,.17],[.42,.24],[.42,.32],[.42,.4],[.42,.48],[.42,.55],[.58,.17],[.58,.24],[.58,.32],[.58,.4],[.58,.48],[.58,.55],[.22,.35],[.78,.35],[.46,.055]],'Sweatshirt':[[.42,.35],[.22,.4],[.78,.4]],'Tayt':[[.42,.7],[.58,.7]],'Kaban':[[.4,.5],[.6,.5],[.22,.4],[.78,.4]],'Eşofman':[[.42,.7],[.58,.7]],'Korsaj':[[.45,.33]]};
+  const FB=(id,col)=>({fab:{active:{kind:'fabric',id},rep:'straight',fg:col}}),PR=(id,col)=>({fab:{active:{kind:'preset',id},c1:'#f5f1ea',c2:col,c3:sh(col,-.3),rep:'straight',fg:col}}),CO=(col)=>({col});
+  const STIL={
+    'Haute Couture':[['Abiye',FB('x_saten_ipek','#efe3cb'),'#8a7a5a'],['3D nakış',null,'#c9a23a'],['Stiletto',null,'#111315'],['Clutch',null,'#c9a23a']],
+    'Avant-garde':[['Elbise',FB('n_holo','#c0c3c7'),'#111315'],['Omuz yapılandırması',null,'#111315'],['Asimetrik panel',null,'#111315'],['Çizme',null,'#111315']],
+    'Minimalist':[['Tişört',CO('#ffffff'),'#8a8d91'],['Pantolon',CO('#d8c3a5'),'#8a8d91'],['Loafer',null,'#6b4226']],
+    'Maximalist':[['Elbise',FB('g_patchwork','#c8267c'),'#111315'],['Broş',null,'#c9a23a'],['İnci',null,'#e8e4da'],['Topuklu ayakkabı',null,'#c8102e'],['El çantası',null,'#2f6f73']],
+    'Bohem':[['Elbise',FB('paisley','#a0612f'),'#6b4226'],['Saçaklı kenar',null,'#6b4226'],['Sandalet',null,'#a0612f'],['Omuz çantası',null,'#a0612f']],
+    'Vintage':[['Elbise',PR('puan','#1c2f63'),'#1c2f63'],['Kemerli bel',null,'#c8102e'],['Babet',null,'#c8102e']],
+    'Retro':[['Gömlek',FB('g_etnik','#d9a441'),'#7a2e24'],['İspanyol paça',null,'#2e4a7d'],['Topuklu ayakkabı',null,'#7a2e24']],
+    'Futuristik':[['Mont',FB('n_metal','#c0c3c7'),'#383e42'],['Tayt',FB('n_neopren','#111315'),'#111315'],['Bot',null,'#c0c3c7']],
+    'Gotik':[['Elbise',FB('kadife','#111315'),'#111315'],['Korsaj',FB('dantel','#111315'),'#111315'],['Dantel şerit',null,'#111315'],['Çizme',null,'#111315']],
+    'Barok':[['Abiye',FB('g_barok','#6e1426'),'#c9a23a'],['Metal iplik nakışı',null,'#c9a23a'],['Stiletto',null,'#c9a23a']],
+    'Romantik':[['Bluz',FB('sifon','#f2a1b7'),'#c8267c'],['Etek',FB('cicek','#f7e9ec'),'#c8267c'],['Fiyonk',null,'#c8267c'],['Babet',null,'#e8c4c0']],
+    'Grunge':[['Gömlek',PR('ekose','#7b1e2b'),'#383e42'],['Jean',FB('denim','#47659a'),'#22345c'],['Bot',null,'#111315']],
+    'Streetwear':[['Sweatshirt',CO('#ef7a1a'),'#111315'],['Eşofman',CO('#111315'),'#ffffff'],['Spor ayakkabı',null,'#ffffff'],['Bel çantası',null,'#111315']],
+    'Cyberpunk':[['Mont',FB('n_holo','#c0c3c7'),'#c6ff00'],['Tayt',FB('n_karbon','#1c1c1c'),'#c6ff00'],['Çizme',null,'#111315']],
+    'Athleisure':[['Tişört',CO('#b7d6f2'),'#383e42'],['Tayt',FB('g_elastan','#383e42'),'#111315'],['Spor ayakkabı',null,'#ffffff'],['Sırt çantası',null,'#383e42']],
+    'Quiet Luxury':[['Kaban',FB('g_kasmir','#b8946a'),'#6b4226'],['Pantolon',CO('#efe3cb'),'#8a7a5a'],['Loafer',null,'#4a3020'],['Tote çanta',null,'#6b4226']],
+    'Deconstructivism':[['Blazer',CO('#8a8d91'),'#111315'],['Asimetrik panel',null,'#111315'],['Ham kenar',null,'#111315'],['Etek',CO('#383e42'),'#111315']],
+    'Sculptural Fashion':[['Elbise',FB('n_matelasse','#efe6d2'),'#55595f'],['Omuz yapılandırması',null,'#55595f'],['Stiletto',null,'#111315']]};
+  window.STIL_MAP=STIL;
+  window._STIL_ACT=(L0,item)=>{const set=STIL[item];if(!set)return null;const doc=D();let n=0,p=0;const keepM=S.mergePart;S.mergePart=false;
+    set.forEach(([it,paint,stroke])=>{const s2=tplShape(it,doc.w,doc.h,stroke);if(!s2||!placeShape(s2,item+': '+it))return;n++;const L=doc.layers[doc.active];L.props=L.props||{};L.props.spec={'Moda Stilleri':item};
+      if(paint){(INP[it]||[]).forEach(([u,v])=>{try{if(tplPaintAt(L,0,u*doc.w,v*doc.h,paint))p++;}catch(e){}});const f=paint.fab;if(f){const ph=window.KUMAS_PHYS&&Object.entries(window.KUMAS_MAP||{}).find(([k,id])=>id===f.active.id);if(ph)L.props.phys=KUMAS_PHYS[ph[0]];}}});
+    S.mergePart=keepM;VSEL=-1;VSELS=[];renderSide();invalidate();
+    return n?item+' stili: '+set.map(x=>x[0]).join(' + ')+' eklendi ('+p+' bölge kumaşıyla boyandı). Her parça ayrı: taşı, boyutlandır, yeniden boya.':null;};
   /* v155: renk seçenekleri (30) — adlar karteladaki eşleşen tona, yoksa standart tona bağlanır; tıklayınca ön renk olur, seçili canlı kıyafet varsa onu da boyar */
   const RENK={'Beyaz':'#ffffff','Siyah':'#111315','Kırmızı':'#c8102e','Bordo':'#7b1e2b','Lacivert':'#1c2f63','Mavi':'#2c5fbf','Açık mavi':'#8ec3ea','Turkuaz':'#30b5b0','Yeşil':'#2e8b3e','Zümrüt yeşili':'#087a50','Haki':'#6b6b3a','Sarı':'#f2c919','Hardal':'#c99a1c','Turuncu':'#ef7a1a','Pembe':'#f2a1b7','Pudra':'#e8c4c0','Fuşya':'#d0257a','Mor':'#6a2c8e','Lila':'#b79ad6','Lavanta':'#c8b6e2','Bej':'#d8c3a5','Krem':'#f3e9d2','Kahverengi':'#6b4226','Taba':'#a0612f','Gri':'#8a8d91','Antrasit':'#383e42','Gümüş':'#c0c3c7','Altın':'#c9a23a','Bronz':'#a0703a','Bakır':'#b8734a'};
   const renkHex=(n)=>{try{for(const k of (typeof KARTELA!=='undefined'?KARTELA:[]))for(const e of (k.c||[]))if(e[0]===n)return e[1];}catch(e){}return RENK[n]||null;};
@@ -7606,6 +7641,7 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
   ACT['Kumaş Desenleri']=(L,item)=>window._DESEN_ACT(L,item);
   ACT['Manken Çeşitleri']=(L,item)=>window._MANKEN_ACT(L,item);
   ACT['Ek Gelişmiş Özellikler']=(L,item)=>window._GEL_ACT(L,item);
+  ACT['Moda Stilleri']=(L,item)=>window._STIL_ACT(L,item);
   ['Özel Kumaş Yüzeyleri','Özel Yüzey Efektleri','Baskı ve Uygulama Teknikleri','Tasarım Materyalleri'].forEach(cn=>{ACT[cn]=(L,item)=>window._NG_ACT(L,item,cn);});
   window.CAT_ACT=ACT;
   window.catAction=(L,cat,item)=>{const fn=ACT[cat];if(!fn)return null;try{return fn(L,item);}catch(e){return null;}};
