@@ -6322,7 +6322,7 @@ renderSide=function(){
     const f=(q||'').toLowerCase().trim();const hit=t=>!f||(t||'').toLowerCase().includes(f);
     if(libCat.indexOf('cat:')===0){const c=CATALOG[+libCat.slice(4)];if(!c)return;
       body.append(el('div',{cls:'lib-h',txt:c.n+' ('+c.items.length+')'}));
-      c.items.filter(x=>hit(x)).forEach(x=>body.append(el('button',{cls:'lib-i',type:'button',on:['click',()=>{const d=D();const L=d&&d.layers[d.active];if(!L){toast('Önce bir katman seçin.');return;}L.props=L.props||{};L.props.spec=L.props.spec||{};L.props.spec[c.n]=x;markDirty();toast(c.n+': '+x+' seçildi');renderSide();}]},el('span',{txt:x}))));
+      c.items.filter(x=>hit(x)).forEach(x=>body.append(el('button',{cls:'lib-i',type:'button',on:['click',()=>{const d=D();const L=d&&d.layers[d.active];if(!L){toast('Önce bir katman seçin.');return;}L.props=L.props||{};L.props.spec=L.props.spec||{};L.props.spec[c.n]=x;markDirty();const okT=window.drawTemplate?window.drawTemplate(L,c.n,x):false;toast(c.n+': '+x+' seçildi'+(okT?' — çizim eklendi':(window.TPL_OK&&!window.TPL_OK(x)?' (çizim şablonu yok)':'')));renderSide();}]},el('span',{txt:x}))));
       return;}
     const sec=(title,items)=>{const key=title.indexOf('Hazır')===0?'models':title==='Süsler'?'trims':'fabrics';if(!f&&key!==libCat)return;const list=items.filter(x=>hit(x.name));if(!list.length)return;
       body.append(el('div',{cls:'lib-h',txt:title+' ('+list.length+')'}));list.forEach(x=>body.append(x.node()));};
@@ -6795,6 +6795,39 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
       h('span',{style:'color:var(--muted)'},k),h('span',{style:'font-weight:600;text-align:right'},SP[k]),
       h('button',{class:'ibtn',style:'min-height:22px;padding:0 6px;font-size:11px',onclick:()=>{delete L.props.spec[k];markDirty();renderSide();}},'×'))));
   body.insertBefore(box,body.firstChild);}catch(e){}};
+/* v150: yaka, cep ve kol çizim şablonları; geri al geçmişine kaydedilir */
+(function(){
+  const mir=(f)=>(u,v)=>f(1-u,v);
+  const TPL={
+    'V yaka':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.36,.12));c.lineTo(...f(.5,.26));c.lineTo(...f(.64,.12));c.stroke();},
+    'U yaka':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.36,.12));c.quadraticCurveTo(...f(.5,.34),...f(.64,.12));c.stroke();},
+    'Bisiklet yaka':(c,W,H,f)=>{c.beginPath();c.ellipse(.5*W,.14*H,.14*W,.05*H,0,0,Math.PI);c.stroke();},
+    'Kare yaka':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.36,.12));c.lineTo(...f(.36,.22));c.lineTo(...f(.64,.22));c.lineTo(...f(.64,.12));c.stroke();},
+    'Kalp yaka':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.36,.12));c.bezierCurveTo(...f(.4,.3),...f(.6,.3),...f(.64,.12));c.stroke();},
+    'Gömlek yaka':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.38,.12));c.lineTo(...f(.46,.26));c.lineTo(...f(.5,.13));c.lineTo(...f(.54,.26));c.lineTo(...f(.62,.12));c.stroke();},
+    'Kapaklı cep':(c,W,H,f)=>{const a=f(.3,.45),b=f(.46,.55);c.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);c.fillRect(a[0],a[1],b[0]-a[0],.03*H);},
+    'Torba cep':(c,W,H,f)=>{const a=f(.3,.45),b=f(.46,.59);c.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);},
+    'Yama cep':(c,W,H,f)=>{const a=f(.3,.45),b=f(.46,.57);c.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);c.setLineDash([8,6]);const i=.012*W;c.strokeRect(a[0]+i,a[1]+i,b[0]-a[0]-2*i,b[1]-a[1]-2*i);c.setLineDash([]);},
+    'Kanguru cep':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.3,.6));c.lineTo(...f(.7,.6));c.lineTo(...f(.66,.72));c.lineTo(...f(.34,.72));c.closePath();c.stroke();},
+    'Yan cep':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.3,.62));c.lineTo(...f(.42,.74));c.stroke();},
+    'Göğüs cebi':(c,W,H,f)=>{const a=f(.56,.3),b=f(.66,.36);c.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);},
+    'Kısa kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.18));c.lineTo(...g(.12,.3));c.lineTo(...g(.2,.42));c.lineTo(...g(.3,.32));c.closePath();c.stroke();});},
+    'Uzun kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.18));c.lineTo(...g(.1,.3));c.lineTo(...g(.06,.62));c.lineTo(...g(.14,.62));c.lineTo(...g(.2,.34));c.lineTo(...g(.3,.3));c.closePath();c.stroke();});},
+    'Balon kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{const q=g(.2,.28);c.beginPath();c.ellipse(q[0],q[1],.1*W,.1*H,0,0,2*Math.PI);c.stroke();});}
+  };
+  window.TPL_OK=(x)=>!!TPL[x];
+  window.drawTemplate=function(L,cat,item){
+    const doc=D();const fn=TPL[item];if(!doc||!L||!fn||L.isVec)return false;
+    const W=L.canvas.width,H=L.canvas.height,c=L.ctx;
+    const before=c.getImageData(0,0,W,H);
+    c.save();c.strokeStyle=S.fg||'#222';c.fillStyle=c.strokeStyle;c.lineWidth=Math.max(3,W/300);c.lineJoin='round';c.lineCap='round';
+    fn(c,W,H,(u,v)=>[u*W,v*H]);
+    c.restore();
+    const after=c.getImageData(0,0,W,H);
+    histPush(doc,{t:'px',layer:L.id,x:0,y:0,w:W,h:H,before,after,bytes:W*H*8});
+    invalidate();return true;
+  };
+})();
 </script>
 
 </body></html>
