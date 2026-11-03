@@ -6420,7 +6420,7 @@ renderSide=function(){
   function setPose(V,name){
     const P=V.parts;if(!P)return;V.pose=name;
     const arm=(o,side,z,x)=>{o.rotation.set(x||0,0,side*z);};
-    if(name==='A'){arm(P.armL,1,.5);arm(P.armR,-1,.5);}
+    if(name==='A'){const ang=V.glb?0:.5;arm(P.armL,1,ang);arm(P.armR,-1,ang);}
     else if(name==='rahat'){arm(P.armL,1,.15);arm(P.armR,-1,.15);}
     else if(name==='bel'){arm(P.armL,1,.25);arm(P.armR,-1,.45);P.armR.rotation.x=.3;}
     P.legL.rotation.set(0,0,0);P.legR.rotation.set(0,0,0);
@@ -6495,10 +6495,56 @@ renderSide=function(){
       if(g.index.count%3!==0)return null;g.computeVertexNormals();return normalizeMannequinGeometry(g);
     }catch(e){console.warn('GLB import error',e);return null;}}
 
+  /* GLB düğüm hiyerarşisini (uzuvlar ayrı düğümlerde, eklemler düğüm orijininde) THREE.Group ağacına çevirir.
+     Böylece harici mankenler yerleşik manken gibi poz alır. */
+  function glbToGroup(buffer,mat){
+    try{
+      const dv=new DataView(buffer);if(dv.byteLength<20||dv.getUint32(0,true)!==0x46546c67||dv.getUint32(4,true)!==2)return null;
+      const total=dv.getUint32(8,true);let off=12,json=null,bin=null;
+      while(off+8<=total){const len=dv.getUint32(off,true),type=dv.getUint32(off+4,true);off+=8;if(off+len>total)return null;
+        if(type===0x4e4f534a)json=JSON.parse(new TextDecoder().decode(new Uint8Array(buffer,off,len)).replace(/[\u0000\s]+$/g,''));
+        else if(type===0x004e4942)bin=new Uint8Array(buffer,off,len);off+=len;}
+      if(!json||!bin||!json.nodes||!json.meshes)return null;
+      const view=new DataView(bin.buffer,bin.byteOffset,bin.byteLength);
+      const cts={5120:[1,'i8'],5121:[1,'u8'],5122:[2,'i16'],5123:[2,'u16'],5125:[4,'u32'],5126:[4,'f32']};
+      const comps={SCALAR:1,VEC2:2,VEC3:3,VEC4:4};
+      const readAcc=(id)=>{const a=json.accessors[id],bv=json.bufferViews[a.bufferView];const ct=cts[a.componentType],nc=comps[a.type];if(!ct||!nc||a.sparse||!bv)return null;
+        const stride=bv.byteStride||ct[0]*nc,start=(bv.byteOffset||0)+(a.byteOffset||0);const out=new Float32Array(a.count*nc);
+        for(let i=0;i<a.count;i++)for(let j=0;j<nc;j++){const at=start+i*stride+j*ct[0];let v;
+          switch(ct[1]){case 'i8':v=view.getInt8(at);break;case 'u8':v=view.getUint8(at);break;case 'i16':v=view.getInt16(at,true);break;case 'u16':v=view.getUint16(at,true);break;case 'u32':v=view.getUint32(at,true);break;default:v=view.getFloat32(at,true);}
+          out[i*nc+j]=v;}
+        return {array:out,count:a.count,comps:nc};};
+      const objs=json.nodes.map((n,i)=>{const o=new THREE.Group();o.name=n.name||('node'+i);
+        if(n.matrix&&n.matrix.length===16){o.matrix.fromArray(n.matrix);o.matrix.decompose(o.position,o.quaternion,o.scale);}
+        else{if(n.translation)o.position.fromArray(n.translation);if(n.rotation)o.quaternion.fromArray(n.rotation);if(n.scale)o.scale.fromArray(n.scale);}
+        if(n.mesh!=null&&json.meshes[n.mesh]){for(const prim of json.meshes[n.mesh].primitives){
+          if((prim.mode!=null&&prim.mode!==4)||prim.attributes.POSITION==null)continue;
+          const pos=readAcc(prim.attributes.POSITION);if(!pos||pos.comps!==3)continue;
+          const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos.array,3));
+          if(prim.indices!=null){const ix=readAcc(prim.indices);if(ix&&ix.comps===1)g.setIndex(new THREE.BufferAttribute(Uint32Array.from(ix.array),1));}
+          g.computeVertexNormals();const m=new THREE.Mesh(g,mat);m.name=o.name+'_mesh';o.add(m);}}
+        return o;});
+      json.nodes.forEach((n,i)=>(n.children||[]).forEach(c=>{if(objs[c])objs[i].add(objs[c]);}));
+      const R=new THREE.Group();const sc=json.scenes?json.scenes[json.scene||0]:null;
+      const roots=sc&&Array.isArray(sc.nodes)?sc.nodes:json.nodes.map((_,i)=>i).filter(i=>!json.nodes.some(n=>(n.children||[]).includes(i)));
+      roots.forEach(i=>{if(objs[i])R.add(objs[i]);});
+      R.updateMatrixWorld(true);
+      const box=new THREE.Box3().setFromObject(R);const h=box.max.y-box.min.y;if(!(h>0))return null;
+      const k=1.75/h;R.scale.multiplyScalar(k);R.updateMatrixWorld(true);
+      box.setFromObject(R);R.position.set(-(box.max.x+box.min.x)/2,-box.min.y,-(box.max.z+box.min.z)/2);
+      R.updateMatrixWorld(true);
+      const find=(nm)=>{let f=null;R.traverse(o=>{if(!f&&o.name===nm&&!o.isMesh)f=o;});return f;};
+      const pick=(a,b)=>{const A=find(a),B=find(b);if(!A||!B)return [null,null];return A.position.x>=B.position.x?[A,B]:[B,A];};
+      const [aL,aR]=pick('arm_L','arm_R'),[lL,lR]=pick('leg_L','leg_R');
+      if(!aL||!aR||!lL||!lR)return {root:R,parts:null};
+      return {root:R,parts:{armL:aL,armR:aR,legL:lL,legR:lR}};
+    }catch(e){console.warn('GLB hiyerarşi hatası',e);return null;}}
   function setBody(V,mode,geo){
     const pc=document.getElementById('v3pose');if(pc)pc.disabled=(mode==='obj');
     V.body.children.filter(o=>!['On','Arka'].includes(o.name)).forEach(o=>{V.body.remove(o);if(o.geometry&&o.geometry.dispose)o.geometry.dispose();});
-    if(mode==='obj'){const m=new THREE.Mesh(geo,V.mat);m.name='Yüklenen manken';V.body.add(m);V.parts=null;}
+    V.glb=mode==='glb';
+    if(mode==='glb'){V.body.add(geo.root);V.parts=geo.parts;if(pc)pc.disabled=!geo.parts;}
+    else if(mode==='obj'){const m=new THREE.Mesh(geo,V.mat);m.name='Yüklenen manken';V.body.add(m);V.parts=null;}
     else{V.parts=buildProc(V.body,V.mat);setPose(V,V.pose||'A');}
     V.key=null;v3Update(true);}
   let V3=null;
@@ -6621,7 +6667,7 @@ renderSide=function(){
       el('input',{type:'range',min:'0',max:'1',step:'0.05',value:'0.35',style:'width:120px',on:['input',e=>{const V=v3Init();if(V){V.bend=+e.target.value;v3Update(true);}}]}),
       el('select',{id:'v3pose',title:'Manken pozu (yerleşik mankende aktif)',style:'font-size:12px;background:#fff;color:#333;border:1px solid #cfd3da;border-radius:6px;padding:2px 4px',on:['change',e=>{const V=v3Init();if(V)setPose(V,e.target.value);}]},
         ...Object.entries(POSES).map(([k,t])=>el('option',{value:k},t))),
-      el('button',{type:'button',txt:'Manken yükle (OBJ/GLB)',title:'Kendi OBJ veya GLB manken dosyanı yükle',style:'border:1px solid #cfd3da;background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer',on:['click',()=>{const f=document.createElement('input');f.type='file';f.accept='.obj,.glb,text/plain,model/gltf-binary';f.addEventListener('change',()=>{const file=f.files&&f.files[0];if(!file)return;const isGlb=/\.glb$/i.test(file.name);const rd=new FileReader();rd.onload=()=>{const g=isGlb?parseGLB(rd.result):parseOBJ(String(rd.result));if(!g){toast(isGlb?'GLB okunamadı: sıkıştırma, harici buffer veya sparse veri olabilir.':'OBJ okunamadı: v ve f satırları bulunamadı.');return;}const V=v3Init();if(V){setBody(V,'obj',g);toast('Manken yüklendi (175 cm ölçeğinde).');}};isGlb?rd.readAsArrayBuffer(file):rd.readAsText(file);});f.click();}]}),
+      el('button',{type:'button',txt:'Manken yükle (OBJ/GLB)',title:'Kendi OBJ veya GLB manken dosyanı yükle',style:'border:1px solid #cfd3da;background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer',on:['click',()=>{const f=document.createElement('input');f.type='file';f.accept='.obj,.glb,text/plain,model/gltf-binary';f.addEventListener('change',()=>{const file=f.files&&f.files[0];if(!file)return;const isGlb=/\.glb$/i.test(file.name);const rd=new FileReader();rd.onload=()=>{const g=isGlb?glbToGroup(rd.result,v3Init()&&v3Init().mat):parseOBJ(String(rd.result));if(!g){toast(isGlb?'GLB okunamadı: sıkıştırma, harici buffer veya sparse veri olabilir.':'OBJ okunamadı: v ve f satırları bulunamadı.');return;}const V=v3Init();if(V){setBody(V,isGlb?'glb':'obj',g);toast('Manken yüklendi (175 cm ölçeğinde).');}};isGlb?rd.readAsArrayBuffer(file):rd.readAsText(file);});f.click();}]}),
       el('select',{title:'Ten rengi',style:'font-size:12px;background:#fff;color:#333;border:1px solid #cfd3da;border-radius:6px;padding:2px 4px',on:['change',e=>{const V=v3Init();if(V&&V.mat)V.mat.color.set(e.target.value);}]},
         ...[['#e6e1da','Ten: açık'],['#d9b89c','Ten: orta açık'],['#b98a64','Ten: orta'],['#8d5e3c','Ten: koyu'],['#5a3a24','Ten: çok koyu']].map(([v,t])=>el('option',{value:v},t))),
       el('label',{style:'font-size:12px;color:#333;display:flex;align-items:center;gap:4px'},'Boy',el('input',{type:'range',min:'0.9',max:'1.1',step:'0.01',value:'1',style:'width:70px',on:['input',e=>{const V=v3Init();if(V)V.body.scale.y=+e.target.value;}]})),
