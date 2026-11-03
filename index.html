@@ -1470,7 +1470,11 @@ cv.addEventListener('pointerdown',e=>{
     panPtr=null;gestureStart();e.preventDefault();return;}
   const p=hoverXY(e);
   if(window.partEditDown&&e.button===0&&partEditDown(e,p,doc)){e.preventDefault();return;}
-  {const LVa=doc.layers[doc.active];if(LVa&&LVa.isVec&&!['shape','hand','fill','pick'].includes(S.tool)&&!spaceDown&&e.button===0&&!navTouch(e)){S.tool='shape';renderTools();renderSide();}}
+  {const LVa=doc.layers[doc.active];if(LVa&&LVa.isVec&&!['shape','hand','fill','pick'].includes(S.tool)&&!spaceDown&&e.button===0&&!navTouch(e)){
+    /* v165: fırça, silgi vb. vektör parçada çalışmaz → en üstteki çizim (piksel) katmanına geç, yoksa oluştur */
+    if(['move','pen'].includes(S.tool)){S.tool='shape';renderTools();renderSide();}
+    else{let ri=-1;for(let i=doc.layers.length-1;i>=0;i--){const Lr=doc.layers[i];if(!Lr.isVec&&Lr.tag!=='figure'&&Lr.tag!=='pano'&&!Lr.ref&&!Lr.locked&&Lr.visible){ri=i;break;}}
+      if(ri<0){addLayer('Çizim');ri=doc.active;}else doc.active=ri;VSEL=-1;VSELS=[];try{refreshLayers();}catch(_){}renderSide();}}}
   if(S.tool==='hand'||spaceDown||e.button===1||navTouch(e)){
     panPtr={id:e.pointerId,x:p.sx,y:p.sy,vx:doc.view.x,vy:doc.view.y};return;}
   if(e.button>0&&e.button!==5&&e.pointerType==='mouse'&&e.button===2)return;
@@ -1493,7 +1497,7 @@ cv.addEventListener('pointerdown',e=>{
     case'pick':pickColor(p.x,p.y,false);ST.picking=true;break;
     case'shape':{const LV=doc.layers[doc.active];
       if(LV&&LV.isVec&&S.shape.mode==='free'){FREE={pts:[[p.x,p.y]]};break;}
-      if(LV&&LV.isVec&&!S.lockEdit&&VSEL>=0&&LV.vec[VSEL]&&LV.vec[VSEL].pts){const z=doc.view.z;const hb=vecCornerHit(LV.vec[VSEL],p.x,p.y,z);if(hb){vsDrag={L:LV,i:VSEL,c:hb,pts0:LV.vec[VSEL].pts.map(q=>q.slice()),bb:vecBox(LV.vec[VSEL])};break;}const tol=22/z;let bi=-1,k=-1,bd=tol;LV.vec.forEach((sh2,si)=>{if(!sh2.pts||sh2.kind==='tpl')return;sh2.pts.forEach((q,j)=>{const d=Math.hypot(q[0]-p.x,q[1]-p.y);if(d<bd){bd=d;bi=si;k=j;}});});if(k>=0){VSEL=bi;VSELS=[bi];S.hdNode=k;if(S.hdMode)hdDrag={L:LV,i:bi,k,snap:JSON.stringify(LV.vec)};else vnDrag={L:LV,i:bi,k};renderSide();break;}}
+      if(window.mselDown&&mselDown(e,p,doc))break;if(LV&&LV.isVec&&!S.lockEdit&&VSEL>=0&&LV.vec[VSEL]&&LV.vec[VSEL].pts){const z=doc.view.z;const GL=LV.tag==='parca'&&S.partLock!==false&&LV.vec.length>1;const gsh=GL?{pts:LV.vec.flatMap(q=>q.pts||[])}:LV.vec[VSEL];const hb=vecCornerHit(gsh,p.x,p.y,z);if(hb){vsDrag={L:LV,i:VSEL,c:hb,pts0:LV.vec[VSEL].pts.map(q=>q.slice()),bb:vecBox(gsh),multi:GL?LV.vec.map(q=>(q.pts||[]).map(r=>r.slice())):null};break;}if(LV.tag==='parca'&&S.partLock!==false){if(vecHit(LV,p.x,p.y)>=0){vecDown(LV,p,e);if(LV.vec.length>1){VSELS=LV.vec.map((_,k)=>k);}break;}}const tol=22/z;let bi=-1,k=-1,bd=tol;LV.vec.forEach((sh2,si)=>{if(!sh2.pts||sh2.kind==='tpl')return;sh2.pts.forEach((q,j)=>{const d=Math.hypot(q[0]-p.x,q[1]-p.y);if(d<bd){bd=d;bi=si;k=j;}});});if(k>=0){VSEL=bi;VSELS=[bi];S.hdNode=k;if(S.hdMode)hdDrag={L:LV,i:bi,k,snap:JSON.stringify(LV.vec)};else vnDrag={L:LV,i:bi,k};renderSide();break;}}
       if(LV&&LV.isVec&&vecHit(LV,p.x,p.y)>=0){vecDown(LV,p,e);break;}
       /* v158: ekrandaki bir katalog parçasına tek dokunuş → o parça seçilir (hangi katmanda olursa olsun) */
       {let pi=-1;for(let li=doc.layers.length-1;li>=0;li--){const Lx=doc.layers[li];if(Lx===LV||!Lx.isVec||Lx.tag!=='parca'||!Lx.visible||Lx.locked)continue;if(vecHit(Lx,p.x,p.y)>=0){pi=li;break;}}
@@ -2985,14 +2989,17 @@ function rasterToParts(){
   },30);
 }
 function drawVecNodes(g,doc){
-  const L=doc.layers[doc.active];if(!L||!L.isVec||VSEL<0||!L.vec[VSEL])return;const sh=L.vec[VSEL];if(!sh||!sh.pts)return;
+  try{window.drawMsel&&drawMsel(g,doc);}catch(e){}
+  const L=doc.layers[doc.active];if(!L||!L.isVec||VSEL<0||!L.vec[VSEL])return;let sh=L.vec[VSEL];if(!sh||!sh.pts)return;
+  /* v165: kilitli ürün (varsayılan): tüm parçaları tek kutu, iç noktalar gizli */
+  const grpLock=L.tag==='parca'&&S.partLock!==false&&L.vec.length>1;if(grpLock)sh={kind:'tpl',pts:L.vec.flatMap(q=>q.pts||[])};
   const z=doc.view.z;const[x0,y0,x1,y1]=vecBox(sh);g.save();g.lineWidth=1/z;g.setLineDash([4/z,3/z]);g.strokeStyle='#2563eb';g.strokeRect(x0,y0,x1-x0,y1-y0);g.setLineDash([]);
   g.lineWidth=1.5/z;g.fillStyle='#ffffff';
   for(const[cx,cy]of[[x0,y0],[x1,y0],[x0,y1],[x1,y1]]){g.beginPath();g.rect(cx-4.5/z,cy-4.5/z,9/z,9/z);g.fill();g.stroke();}
   for(const[cx,cy]of[[(x0+x1)/2,y0],[(x0+x1)/2,y1],[x0,(y0+y1)/2],[x1,(y0+y1)/2]]){g.beginPath();g.rect(cx-3.5/z,cy-3.5/z,7/z,7/z);g.fill();g.stroke();}
   g.restore();
   g.save();g.lineWidth=1.2/z;g.fillStyle='#ffffff';g.strokeStyle='#1e3a8a';
-  L.vec.forEach((o,oi)=>{if(!o.pts||oi===VSEL||o.kind==='tpl')return;o.pts.forEach(q=>{g.beginPath();g.arc(q[0],q[1],3.5/z,0,6.2832);g.fill();g.stroke();});});
+  L.vec.forEach((o,oi)=>{if(!o.pts||oi===VSEL||o.kind==='tpl'||grpLock)return;o.pts.forEach(q=>{g.beginPath();g.arc(q[0],q[1],3.5/z,0,6.2832);g.fill();g.stroke();});});
   if(sh.kind!=='tpl')sh.pts.forEach(q=>{g.beginPath();g.arc(q[0],q[1],5/z,0,6.2832);g.fill();g.stroke();});
   if(sh.hd){g.strokeStyle='#7c3aed';sh.hd.forEach((hv,k)=>{if(!hv)return;const q=sh.pts[k];[hv.i,hv.o].forEach(c=>{if(!c)return;g.beginPath();g.moveTo(q[0],q[1]);g.lineTo(c[0],c[1]);g.stroke();g.beginPath();g.arc(c[0],c[1],3.5/z,0,6.2832);g.fill();g.stroke();});});}
   g.restore();
@@ -3186,7 +3193,7 @@ function fabricSection(body){
   FAB_CATS.forEach(cat=>{const items=FABRICS.filter(f=>f.cat===cat);if(!items.length)return;
     const cards=h('div',{class:'cards'});
     items.forEach(f=>{const c=fabricThumb(f,S.fg),on=S.pat.active&&S.pat.active.kind==='fabric'&&S.pat.active.id===f.id;
-      cards.append(h('button',{class:'card sq','aria-pressed':String(on),title:f.n,onclick:()=>{S.pat.active={kind:'fabric',id:f.id};S.fill.src='pattern';renderSide();toast('"'+f.n+'" seçildi. Boya aracıyla bölgeye uygula.');}},c,f.n));});
+      cards.append(h('button',{class:'card sq','aria-pressed':String(on),title:f.n,onclick:()=>{S.pat.active={kind:'fabric',id:f.id};S.fill.src='pattern';renderSide();const m=window.fabPicked&&fabPicked({active:{kind:'fabric',id:f.id},rep:S.pat.fillRepeat||'straight',fg:S.fg},f.n);toast(m||('"'+f.n+'" seçildi. Bir ürün seç ya da Boya aracıyla bölgeye uygula.'));}},c,f.n));});
     grid.append(h('div',{class:'sec',style:'margin-bottom:10px'},h('h4',null,cat),cards));});
   body.append(sec('Kumaşlar (ana renkte)',h('div',{class:'note'},'Kumaş ana renkle boyanır. Önce Renk sekmesinden rengi seç, sonra kumaşa dokun. Şeffaf kumaşlar altındaki katmanı gösterir.'),grid));
 }
@@ -3800,6 +3807,8 @@ let VLAST={t:0,i:-1};
 function vecDown(L,p,e){const hit=vecHit(L,p.x,p.y);
   if(hit<0){if(!e.shiftKey)VSELS=[];VDRAG=null;renderSide();invalidate();return;}
   if(e.shiftKey)vecPick(hit,true);else if(!VSELS.includes(hit))vecPick(hit,false);
+  /* v165: kilitli ürün: tüm parçaları birlikte seçili */
+  if(L.tag==='parca'&&S.partLock!==false&&L.vec.length>1)VSELS=L.vec.map((_,k)=>k);
   if(!VSELS.length){VDRAG=null;return;}
   /* çift tıklama (350 ms, aynı şekil): seçili şekillerin kopyasını oluştur */
   const nowT=Date.now();if(VLAST.i===hit&&nowT-VLAST.t<350&&!e.altKey){VLAST={t:0,i:-1};vecDuplicate();return;}VLAST={t:nowT,i:hit};
@@ -3894,14 +3903,14 @@ function vecOverlay(g,L){g.save();g.setLineDash([4,3]);g.strokeStyle='#1e88e5';g
 /* v156: katalog parçası (kind 'tpl'): kontrol noktalı yollar; pts ölçeklenince eğriler de doğru ölçeklenir */
 /* v159: parça boyama — tohum noktaları kutuya göre (0..1) saklanır; bölge, parçanın kendi çizgileriyle sınırlı taşma doldurma ile her çizimde yeniden bulunur */
 const TPLPAINT=new WeakMap();
-function tplStrokeMask(s,k,x0,y0,w,h){const c=newCanvas(w,h),g=c.getContext('2d');g.setTransform(k,0,0,k,-x0*k,-y0*k);const t=Object.assign({},s,{paint:null,stroke:'#000',alpha:1,sw:Math.max(s.sw||3,2/k)});vecDrawTpl(g,t,true);return c;}
+function tplStrokeMask(s,k,x0,y0,w,h){const c=newCanvas(w,h),g=c.getContext('2d');g.setTransform(k,0,0,k,-x0*k,-y0*k);const t=Object.assign({},s,{paint:null,fillAll:null,stroke:'#000',alpha:1,sw:Math.max(s.sw||3,2/k)});vecDrawTpl(g,t,true);return c;}
 function tplRegion(lineA,w,h,sx,sy){sx|=0;sy|=0;if(sx<0||sy<0||sx>=w||sy>=h)return null;const N=w*h,m=new Uint8Array(N);const wall=i=>lineA[i*4+3]>40;if(wall(sy*w+sx))return null;
   const st=[sy*w+sx];m[sy*w+sx]=1;let n=0;while(st.length){const i=st.pop();n++;const x=i%w,y=(i/w)|0;
     if(x>0&&!m[i-1]&&!wall(i-1)){m[i-1]=1;st.push(i-1);}if(x<w-1&&!m[i+1]&&!wall(i+1)){m[i+1]=1;st.push(i+1);}
     if(y>0&&!m[i-w]&&!wall(i-w)){m[i-w]=1;st.push(i-w);}if(y<h-1&&!m[i+w]&&!wall(i+w)){m[i+w]=1;st.push(i+w);}}
   /* 1 px genişlet: çizginin altına girer, boşluk kalmaz; çizgi üstte çizildiği için taşma görünmez */
   const o=new Uint8Array(m);for(let i=0;i<N;i++)if(m[i]){const x=i%w;if(x>0)o[i-1]=1;if(x<w-1)o[i+1]=1;if(i>=w)o[i-w]=1;if(i<N-w)o[i+w]=1;}return{m:o,n};}
-function tplPaintCanvas(s){const key=JSON.stringify([s.pts,s.paint,s.sw,s.drape,s.gloss]);const c0=TPLPAINT.get(s);if(c0&&c0.key===key)return c0;
+function tplPaintCanvas(s){const key=JSON.stringify([s.pts,s.paint,s.sw,s.drape,s.gloss,s.fillAll?1:0]);const c0=TPLPAINT.get(s);if(c0&&c0.key===key)return c0;
   const b=vecBox(s),pad=4,W0=b[2]-b[0],H0=b[3]-b[1];const k=Math.min(1,700/Math.max(W0,H0,1));const x0=b[0]-pad/k,y0=b[1]-pad/k,w=Math.ceil((W0+2*pad/k)*k),h=Math.ceil((H0+2*pad/k)*k);
   const lc=tplStrokeMask(s,k,x0,y0,w,h),la=lc.getContext('2d').getImageData(0,0,w,h).data;
   const pc=newCanvas(w,h),pg=pc.getContext('2d');const masks=[];
@@ -3928,7 +3937,13 @@ function tplPaintAt(L,i,x,y,ov){const s=L.vec[i];if(!s||s.kind!=='tpl')return fa
   const nw=JSON.stringify(arr);s.paint=arr;vecRender(L);invalidate();
   structEntry(D(),()=>{s.paint=JSON.parse(old);vecRender(L);invalidate();},()=>{s.paint=JSON.parse(nw);vecRender(L);invalidate();},0);markDirty();
   toast(fd?'Bölge kumaşla boyandı.':'Bölge boyandı.');return true;}
-function vecDrawTpl(g,s,linesOnly){if(!linesOnly&&s.paint&&s.paint.length){try{const P=tplPaintCanvas(s);g.save();g.imageSmoothingEnabled=true;g.drawImage(P.c,P.x0,P.y0,P.w/P.k,P.h/P.k);g.restore();}catch(e){}}
+/* v165: parçanın tüm kapalı bölgelerini tek dolguyla doldur (kumaş ya da renk) — çizgilerin altına çizilir */
+function tplFillAllPath(g,s){const Pt=s.pts;(s.grp||[]).forEach(([o0,o1,m,d])=>{if(d&&d.length)return;g.beginPath();for(let i=o0;i<o1;i++){const o=s.ops[i],t=o[0];
+  if(t==='M')g.moveTo(Pt[o[1]][0],Pt[o[1]][1]);else if(t==='L')g.lineTo(Pt[o[1]][0],Pt[o[1]][1]);else if(t==='Q')g.quadraticCurveTo(Pt[o[1]][0],Pt[o[1]][1],Pt[o[2]][0],Pt[o[2]][1]);
+  else if(t==='C')g.bezierCurveTo(Pt[o[1]][0],Pt[o[1]][1],Pt[o[2]][0],Pt[o[2]][1],Pt[o[3]][0],Pt[o[3]][1]);else if(t==='Z')g.closePath();}g.fill();});}
+function tplFillStyle(g,fa){if(fa&&fa.fab){const t=fabCanvasFor(fa.fab);if(t){const pt=g.createPattern(t,'repeat');if(pt){if(pt.setTransform)pt.setTransform(new DOMMatrix().scale(fa.fab.scale||1).rotate(fa.fab.rot||0));return pt;}}}return (fa&&fa.col)||'#ece6da';}
+function vecDrawTpl(g,s,linesOnly){if(!linesOnly&&s.fillAll){try{g.save();g.fillStyle=tplFillStyle(g,s.fillAll);if(s.fillAll.a!=null)g.globalAlpha=s.fillAll.a;tplFillAllPath(g,s);g.restore();}catch(e){}}
+  if(!linesOnly&&s.paint&&s.paint.length){try{const P=tplPaintCanvas(s);g.save();g.imageSmoothingEnabled=true;g.drawImage(P.c,P.x0,P.y0,P.w/P.k,P.h/P.k);g.restore();}catch(e){}}
   const P=s.pts;g.save();g.lineWidth=s.sw||3;g.lineJoin='round';g.lineCap='round';g.strokeStyle=s.stroke||'#222';g.fillStyle=s.stroke||'#222';if(s.alpha!=null)g.globalAlpha=s.alpha;
   (s.grp||[]).forEach(([o0,o1,m,d])=>{g.beginPath();for(let i=o0;i<o1;i++){const o=s.ops[i],t=o[0];
     if(t==='M')g.moveTo(P[o[1]][0],P[o[1]][1]);else if(t==='L')g.lineTo(P[o[1]][0],P[o[1]][1]);
@@ -4026,10 +4041,12 @@ window.addEventListener('pointermove',e=>{
   const bx=vsDrag.c.includes('w')?x0:x1,by=vsDrag.c.includes('n')?y0:y1;
   const sx=(bx-ax)?((p.x-ax)/(bx-ax)):1,sy=(by-ay)?((p.y-ay)/(by-ay)):1;
   let kx=Math.max(.05,sx),ky=Math.max(.05,sy);const cc=vsDrag.c;if(cc==='n'||cc==='s')kx=1;else if(cc==='e'||cc==='w')ky=1;else if(e.shiftKey){const k=Math.max(kx,ky);kx=ky=k;}
-  sh.pts=vsDrag.pts0.map(([x,y])=>[ax+(x-ax)*kx,ay+(y-ay)*ky]);
+  if(vsDrag.multi)vsDrag.L.vec.forEach((q,qi)=>{q.pts=vsDrag.multi[qi].map(([x,y])=>[ax+(x-ax)*kx,ay+(y-ay)*ky]);});else sh.pts=vsDrag.pts0.map(([x,y])=>[ax+(x-ax)*kx,ay+(y-ay)*ky]);
   vecRender(vsDrag.L);invalidate();
 });
-window.addEventListener('pointerup',()=>{const d=vsDrag;vsDrag=null;if(!d)return;const sh=d.L.vec[d.i];if(!sh)return;
+window.addEventListener('pointerup',()=>{const d=vsDrag;vsDrag=null;if(!d)return;
+  if(d.multi){const L=d.L,before=d.multi,after=L.vec.map(q=>(q.pts||[]).map(r=>r.slice()));structEntry(D(),()=>{L.vec.forEach((q,i)=>{q.pts=before[i].map(r=>r.slice());});vecRender(L);invalidate();},()=>{L.vec.forEach((q,i)=>{q.pts=after[i].map(r=>r.slice());});vecRender(L);invalidate();},0);markDirty();return;}
+  const sh=d.L.vec[d.i];if(!sh)return;
   const before=d.pts0,after=sh.pts.map(q=>q.slice());if(JSON.stringify(before)===JSON.stringify(after))return;
   /* v156: köşe / kenar ölçeklemesi geri alınabilir */
   structEntry(D(),()=>{sh.pts=before.map(q=>q.slice());vecRender(d.L);renderSide();invalidate();},()=>{sh.pts=after.map(q=>q.slice());vecRender(d.L);renderSide();invalidate();},0);markDirty();});
@@ -4504,7 +4521,7 @@ K('/','Saydamlığı kilitle (katman)','Renk ve fırça',toggleAlphaLock);K('Shi
 K('Ctrl+Z','Geri al','Düzenleme',undo);K('Ctrl+Shift+Z','Yinele','Düzenleme',redo);K('Ctrl+Y','Yinele','Düzenleme',redo,{hidden:true});
 K('Ctrl+C','Kopyala','Düzenleme',()=>selCopy(false));K('Ctrl+X','Kes','Düzenleme',()=>selCopy(true));K('Ctrl+V','Yapıştır (yeni katman)','Düzenleme',selPaste);K('Ctrl+J','Seçimi / katmanı çoğalt','Düzenleme',()=>{const LV=D().layers[D().active];if(LV&&LV.isVec&&VSELS.length)vecDuplicate();else if(SEL.mask)selDuplicate();else dupLayer();});
 K('Ctrl+A','Tümünü seç','Düzenleme',selectAll);K('Ctrl+D','Seçimi kaldır','Düzenleme',clearSel);K('Ctrl+Shift+I','Seçimi ters çevir','Düzenleme',selInvert);K('Ctrl+Shift+L','Katmanın şeklini seç','Düzenleme',selFromLayer);
-K('Delete','Seçili alanı sil','Düzenleme',()=>{const LV=D().layers[D().active];if(LV&&LV.isVec&&VSELS.length)vecDeleteSel();else selClearPixels();});K('Backspace','Seçili alanı sil','Düzenleme',()=>{const LV=D().layers[D().active];if(LV&&LV.isVec&&VSELS.length)vecDeleteSel();else selClearPixels();},{hidden:true});K('Alt+Backspace','Seçimi ana renkle doldur','Düzenleme',()=>selFill(S.fg));K('Ctrl+Backspace','Seçimi ikincil renkle doldur','Düzenleme',()=>selFill(S.bg));
+K('Delete','Seçili alanı sil','Düzenleme',()=>{if(window.MSEL&&MSEL.length){mselDelete();return;}const LV=D().layers[D().active];if(LV&&LV.isVec&&VSELS.length)vecDeleteSel();else selClearPixels();});K('Backspace','Seçili alanı sil','Düzenleme',()=>{const LV=D().layers[D().active];if(LV&&LV.isVec&&VSELS.length)vecDeleteSel();else selClearPixels();},{hidden:true});K('Alt+Backspace','Seçimi ana renkle doldur','Düzenleme',()=>selFill(S.fg));K('Ctrl+Backspace','Seçimi ikincil renkle doldur','Düzenleme',()=>selFill(S.bg));
 K('Ctrl+U','Renk ayarı (ton / doygunluk)','Düzenleme',openAdjust);K('Enter','Uygula (taşı / kalem)','Düzenleme',()=>{if(S.tool==='curve'&&CURVE.pts.length>1)commitCurve(false);else if(S.tool==='move'&&MOVE.on)commitMove();});K('Esc','Vazgeç / seçimi bırak','Düzenleme',()=>{if(SELDRAG){SELDRAG=null;invalidate();return;}if(MOVE.on||CURVE.pts.length||SHAPE){cancelTransient();CURVE.pts=[];renderFloat();}else clearSel();});
 K('Ok tuşları','Taşı aracıyla 1 px kaydır (Shift: 10 px)','Düzenleme',()=>{},{display:true});
 /* katman */
@@ -6048,6 +6065,7 @@ function selbarFlip(axis){const doc=D(),L=doc.layers[doc.active];if(!L||!VSELS.l
   vecTransformSel(L,VSELS.slice(),axis==='h'?((x,y)=>[2*cx-x,y]):((x,y)=>[x,2*cy-y]));}
 function selbarUpdate(){
   const doc=D(),L=doc.layers[doc.active];
+  if(window.MSEL&&MSEL.length&&S.mode==='design'&&window.mselBar){mselBar(SELBAR);return;}
   const on=!!(L&&L.isVec&&VSELS.length&&S.mode==='design');
   SELBAR.classList.toggle('on',on);if(!on){SELBAR.innerHTML='';return;}
   const n=VSELS.filter(i=>L.vec[i]).length;
@@ -6059,6 +6077,9 @@ function selbarUpdate(){
     b('Dikey çevir',()=>selbarFlip('v')),
     b('Kontura çevir',()=>vecPF2('outline')),
     b('Sil',()=>vecDeleteSel()));
+  /* v165: ön / arka plan ve kilit */
+  if(L.tag==='parca'){SELBAR.append(b('En öne',()=>partOrder(L,'front'),'Bu ürünü öteki ürünlerin önüne getir'),b('En arkaya',()=>partOrder(L,'back'),'Bu ürünü öteki ürünlerin arkasına gönder (manken önünde kalır)'));
+    const ck=h('label',{class:'note',style:'display:inline-flex;align-items:center;gap:4px;padding:0 6px;cursor:pointer'},h('input',{type:'checkbox',checked:S.partLock===false,onchange:e=>{S.partLock=!e.target.checked;VSELS=S.partLock?L.vec.map((_,k)=>k):[VSEL];toast(S.partLock?'Ürün kilitli: tüm parçaları birlikte taşınır ve boyutlanır.':'Parçalar ayrı: tek parça ya da nokta sürüklenebilir.');selbarUpdate();invalidate();}}),'Parçaları ayrı düzenle');SELBAR.append(ck);}
   /* v160: katalog parçalarında çizgi ekle / çizgi sil / parçaya ekle */
   const sh0=L.vec[VSELS[0]];if(sh0&&sh0.kind==='tpl'&&window.PE){const tg=(t,on,fn,title)=>{const x=h('button',{class:'ibtn'+(on?' pri':''),title,'aria-pressed':String(!!on),onclick:fn},t);return x;};
     SELBAR.append(tg('Çizgi ekle',PE.mode==='draw',()=>partEditMode('draw'),'Parçanın üzerine çiz: çizgi parçaya eklenir'),tg('Çizgi sil',PE.mode==='erase',()=>partEditMode('erase'),'Silmek istediğin çizgiye dokun'),tg('Parçaya ekle'+(S.mergePart?': açık':''),!!S.mergePart,()=>{S.mergePart=!S.mergePart;toast(S.mergePart?'Parçaya ekle açık: katalogdan seçtiğin madde bu parçaya birleşir (ör. elbiseye kol).':'Parçaya ekle kapalı: katalog maddeleri ayrı parça olarak eklenir.');selbarUpdate();},'Katalogdan seçilen madde seçili parçanın içine birleşir'));}
@@ -7306,10 +7327,13 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
   window.swatchShape=swatchShape;
   const placeSwatch=(src,label,phys)=>{const sh2=swatchShape(src,label);if(!placeShape(sh2,label))return null;const d=D(),L=d.layers[d.active];L.props=L.props||{};if(phys)L.props.phys=phys;return L;};
   /* ACT tanımlandıktan sonra bağlanır (aşağıda) */
-  window._KUMAS_ACT=(L,item)=>{const id=KUMAS[item];if(!id)return null;const NL=placeSwatch({f:id,item},'Kumaş: '+item,KUMAS_PHYS[item]);return NL?'Kumaş: '+item+' parça olarak eklendi (3B ön ayar: '+(KUMAS_PHYS[item]||'').replace(/_/g,' ')+'). Köşe ve kenar noktalarından boyutlandırabilirsin.':null;};
-  window._NG_ACT=(L,item,cn)=>{const g0=NGMAP[item];if(!g0)return null;const ph=NG_PHYS[item]||null;const NL=placeSwatch({f:g0.id,col:g0.col},cn.split(' ')[0]+': '+item,ph);
+  /* v165: kumaş/desen/yüzey tıklaması → önce seçili ürüne ya da sayfadaki kıyafetlere uygula; ürün yoksa numune parça */
+  const fabFromSrc=(src,col)=>src.p?{active:{kind:'preset',id:src.p},c1:'#f5f1ea',c2:col,c3:sh(col,-.3),rep:S.pat.fillRepeat||'straight',fg:col}:src.f?{active:{kind:'fabric',id:src.f},rep:S.pat.fillRepeat||'straight',fg:col}:null;
+  const tryApply=(src,col,name,phys)=>{if(!window.fabPicked)return null;if(src.d){const T=(function(){const t=colorTargets();return t;})();return null;}const fab=fabFromSrc(src,col);return fab?fabPicked(fab,name,phys):null;};
+  window._KUMAS_ACT=(L,item)=>{const id=KUMAS[item];if(!id)return null;{const m=tryApply({f:id},KCOL[item]||'#ece6da','Kumaş: '+item,KUMAS_PHYS[item]);if(m)return m;}const NL=placeSwatch({f:id,item},'Kumaş: '+item,KUMAS_PHYS[item]);return NL?'Kumaş: '+item+' parça olarak eklendi (3B ön ayar: '+(KUMAS_PHYS[item]||'').replace(/_/g,' ')+'). Köşe ve kenar noktalarından boyutlandırabilirsin.':null;};
+  window._NG_ACT=(L,item,cn)=>{const g0=NGMAP[item];if(!g0)return null;const ph=NG_PHYS[item]||null;{const m=tryApply({f:g0.id},g0.col,item,ph);if(m)return m;}const NL=placeSwatch({f:g0.id,col:g0.col},cn.split(' ')[0]+': '+item,ph);
     return NL?item+' parça olarak eklendi'+(ph?' (3B ön ayar: '+ph.replace(/_/g,' ')+')':'')+'. Kıyafete uygulamak için "Kumaş desenini kıyafete uygulama" ya da Boya aracı; 3B\'de malzeme olarak görünür.':null;};
-  window._DESEN_ACT=(L,item)=>{const src=DESEN[item];if(!src)return null;const NL=placeSwatch(Object.assign({},src,{col:(S.fg&&!/^#(22272e|ffffff)$/i.test(S.fg))?S.fg:'#2a3550'}),'Desen: '+item);return NL?'Desen: '+item+' parça olarak eklendi. Köşe ve kenar noktalarından boyutlandırabilirsin.':null;};
+  window._DESEN_ACT=(L,item)=>{const src=DESEN[item];if(!src)return null;{const col=(S.fg&&!/^#(22272e|ffffff)$/i.test(S.fg))?S.fg:'#2a3550';const m=tryApply(src,col,'Desen: '+item);if(m)return m;}const NL=placeSwatch(Object.assign({},src,{col:(S.fg&&!/^#(22272e|ffffff)$/i.test(S.fg))?S.fg:'#2a3550'}),'Desen: '+item);return NL?'Desen: '+item+' parça olarak eklendi. Köşe ve kenar noktalarından boyutlandırabilirsin.':null;};
   /* v158: çocuk mankenleri (6 baş oranı) — ayrı, boyutlandırılabilir parça */
   const KID=(girl,cu)=>(c,W,H)=>{const cx=cu*W,top=.36*H,ht=.6*H,hd=ht/6,X=k=>k*hd*.62,Y=k=>top+k*hd;
     c.beginPath();c.ellipse(cx,Y(.5),hd*.4,hd*.5,0,0,2*Math.PI);c.stroke();
@@ -7497,7 +7521,9 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
       const F=newCanvas(w,h),fg=F.getContext('2d');fg.translate(-x0,-y0);
       const M=newCanvas(w,h),mg=M.getContext('2d');mg.translate(-x0,-y0);
       let prof;
-      if(s.paint&&s.paint.length){const P=tplPaintCanvas(s);const pf=(s.paint.find(sd=>sd.fab)||{}).fab;prof=pf?fab3D(pf):{r:.7,m:0,b:.4,a:1,sh:.6};fg.globalAlpha=prof.a;fg.drawImage(P.c,P.x0,P.y0,P.w/P.k,P.h/P.k);fg.globalAlpha=1;mg.drawImage(P.c,P.x0,P.y0,P.w/P.k,P.h/P.k);}
+      if(s.fillAll){prof=s.fillAll.fab?fab3D(s.fillAll.fab):{r:.72,m:0,b:.45,a:1,sh:.6};fg.fillStyle=tplFillStyle(fg,s.fillAll);fg.globalAlpha=prof.a;tplFillAllPath(fg,s);fg.globalAlpha=1;mg.fillStyle='#000';tplFillAllPath(mg,s);
+        if(s.paint&&s.paint.length){const P=tplPaintCanvas(s);fg.drawImage(P.c,P.x0,P.y0,P.w/P.k,P.h/P.k);mg.drawImage(P.c,P.x0,P.y0,P.w/P.k,P.h/P.k);}}
+      else if(s.paint&&s.paint.length){const P=tplPaintCanvas(s);const pf=(s.paint.find(sd=>sd.fab)||{}).fab;prof=pf?fab3D(pf):{r:.7,m:0,b:.4,a:1,sh:.6};fg.globalAlpha=prof.a;fg.drawImage(P.c,P.x0,P.y0,P.w/P.k,P.h/P.k);fg.globalAlpha=1;mg.drawImage(P.c,P.x0,P.y0,P.w/P.k,P.h/P.k);}
       else{/* boyanmamış parça: son eklenen kumaş numunesiyle (yoksa krem kumaşla) giydirilir */
         let fs=s.base3D||'#ece6da';prof={r:.72,m:0,b:.45,a:1,sh:.6};
         if(swf){const t=fabCanvasFor(swf);if(t){const pt=fg.createPattern(t,'repeat');if(pt){fs=pt;}prof=fab3D(swf);}}
@@ -7624,31 +7650,69 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
       if(paint){(INP[it]||[]).forEach(([u,v])=>{try{if(tplPaintAt(L,0,u*doc.w,v*doc.h,paint))p++;}catch(e){}});const f=paint.fab;if(f){const ph=window.KUMAS_PHYS&&Object.entries(window.KUMAS_MAP||{}).find(([k,id])=>id===f.active.id);if(ph)L.props.phys=KUMAS_PHYS[ph[0]];}}});
     S.mergePart=keepM;VSEL=-1;VSELS=[];renderSide();invalidate();
     return n?item+' stili: '+set.map(x=>x[0]).join(' + ')+' eklendi ('+p+' bölge kumaşıyla boyandı). Her parça ayrı: taşı, boyutlandır, yeniden boya.':null;};
+  /* v165: çerçeveyle toplu seçim (MSEL), ön/arka plan, sağ paneldeki rengin seçili ürüne uygulanması, kumaşın boyamadan uygulanması */
+  window.MSEL=[];let MQ=null,MD=null;
+  const lbox=(L)=>{let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;(L.vec||[]).forEach(q=>{if(!q.pts)return;const b=vecBox(q);x0=Math.min(x0,b[0]);y0=Math.min(y0,b[1]);x1=Math.max(x1,b[2]);y1=Math.max(y1,b[3]);});return[x0,y0,x1,y1];};
+  const parcaLayers=()=>D().layers.filter(L=>L.tag==='parca'&&L.visible&&!L.locked&&L.vec&&L.vec.length);
+  window.drawMsel=(g,doc)=>{const z=doc.view.z;g.save();g.lineWidth=1.5/z;
+    if(MQ){g.setLineDash([6/z,4/z]);g.strokeStyle='#2563eb';g.fillStyle='rgba(37,99,235,.08)';const x=Math.min(MQ.x0,MQ.x1),y=Math.min(MQ.y0,MQ.y1),w=Math.abs(MQ.x1-MQ.x0),h2=Math.abs(MQ.y1-MQ.y0);g.fillRect(x,y,w,h2);g.strokeRect(x,y,w,h2);}
+    if(MSEL.length){g.setLineDash([4/z,3/z]);g.strokeStyle='#2563eb';let X0=1e9,Y0=1e9,X1=-1e9,Y1=-1e9;MSEL.forEach(L=>{const b=lbox(L);g.strokeRect(b[0],b[1],b[2]-b[0],b[3]-b[1]);X0=Math.min(X0,b[0]);Y0=Math.min(Y0,b[1]);X1=Math.max(X1,b[2]);Y1=Math.max(Y1,b[3]);});
+      g.setLineDash([]);g.lineWidth=2.5/z;g.strokeRect(X0,Y0,X1-X0,Y1-Y0);}
+    g.restore();};
+  window.mselClear=()=>{if(MSEL.length){MSEL=window.MSEL=[];try{selbarUpdate();}catch(e){}invalidate();}};
+  /* şekil aracı basışı: (1) çoklu seçim içindeyse hepsini taşı, (2) boş yerde sürükle → seçim çerçevesi */
+  window.mselDown=(e,p,doc)=>{if(e.shiftKey&&false)return false;
+    if(MSEL.length){const inside=MSEL.some(L=>{const b=lbox(L);return p.x>=b[0]&&p.x<=b[2]&&p.y>=b[1]&&p.y<=b[3];});
+      if(inside){MD={last:{x:p.x,y:p.y},snap:MSEL.map(L=>JSON.stringify(L.vec)),id:e.pointerId,moved:false};return true;}mselClear();}
+    const LV=doc.layers[doc.active];
+    /* bir parçanın üstündeyse normal seçim akışı */
+    const onPart=parcaLayers().some(L=>{const b=lbox(L);return p.x>=b[0]&&p.x<=b[2]&&p.y>=b[1]&&p.y<=b[3];})||(LV&&LV.isVec&&vecHit(LV,p.x,p.y)>=0);
+    if(onPart)return false;
+    MQ={x0:p.x,y0:p.y,x1:p.x,y1:p.y,id:e.pointerId};VSEL=-1;VSELS=[];S.mergePart=false;if(window.PE)PE.mode=null;try{selbarUpdate();}catch(_){}invalidate();return true;};
+  window.addEventListener('pointermove',e=>{if(MQ&&e.pointerId===MQ.id){const p=hoverXY(e);MQ.x1=p.x;MQ.y1=p.y;invalidate();return;}
+    if(MD&&e.pointerId===MD.id){const p=hoverXY(e);const dx=p.x-MD.last.x,dy=p.y-MD.last.y;if(!dx&&!dy)return;MD.last={x:p.x,y:p.y};MD.moved=true;MSEL.forEach(L=>{L.vec.forEach(q=>vecMoveShape(q,dx,dy));vecRender(L);});invalidate();}});
+  window.addEventListener('pointerup',e=>{if(MQ&&e.pointerId===MQ.id){const q=MQ;MQ=null;const x0=Math.min(q.x0,q.x1),x1=Math.max(q.x0,q.x1),y0=Math.min(q.y0,q.y1),y1=Math.max(q.y0,q.y1);const z=D().view.z;
+      if((x1-x0)*z>6||(y1-y0)*z>6){MSEL=window.MSEL=parcaLayers().filter(L=>{const b=lbox(L);return b[0]<x1&&b[2]>x0&&b[1]<y1&&b[3]>y0;});if(MSEL.length)toast(MSEL.length+' ürün seçildi: birlikte taşı, sil, öne/arkaya al ya da sağ panelden renk ver.');}
+      try{selbarUpdate();renderSide();}catch(_){}invalidate();return;}
+    if(MD&&e.pointerId===MD.id){const d=MD;MD=null;if(!d.moved)return;const Ls=MSEL.slice(),before=d.snap,after=Ls.map(L=>JSON.stringify(L.vec));
+      structEntry(D(),()=>{Ls.forEach((L,i)=>{L.vec=JSON.parse(before[i]);vecRender(L);});invalidate();},()=>{Ls.forEach((L,i)=>{L.vec=JSON.parse(after[i]);vecRender(L);});invalidate();},0);markDirty();}});
+  window.mselDelete=()=>{const doc=D(),Ls=MSEL.slice();if(!Ls.length)return;const idx=Ls.map(L=>doc.layers.indexOf(L));const prev=doc.active;doc.layers=doc.layers.filter(L=>!Ls.includes(L));doc.active=Math.min(doc.active,doc.layers.length-1);mselClear();refreshLayers();invalidate();
+    structEntry(doc,()=>{idx.map((k,i)=>[k,Ls[i]]).sort((a,b)=>a[0]-b[0]).forEach(([k,L])=>doc.layers.splice(k,0,L));doc.active=prev;refreshLayers();invalidate();},()=>{doc.layers=doc.layers.filter(L=>!Ls.includes(L));doc.active=Math.min(doc.active,doc.layers.length-1);refreshLayers();invalidate();},0);markDirty();toast(Ls.length+' ürün silindi.');};
+  /* ön / arka plan: ürünü öteki ürünlerin önüne ya da arkasına al (manken her zaman en altta) */
+  window.partOrder=(L,where)=>{const doc=D();const Ls=(Array.isArray(L)?L:[L]).filter(x=>doc.layers.includes(x));if(!Ls.length)return;const before=doc.layers.slice();
+    let rest=doc.layers.filter(x=>!Ls.includes(x));if(where==='front')rest=rest.concat(Ls);else{const fi=rest.findIndex(x=>x.tag==='figure');rest.splice(fi+1,0,...Ls);}
+    doc.layers=rest;doc.active=doc.layers.indexOf(Ls[Ls.length-1]);const after=doc.layers.slice();refreshLayers();invalidate();markDirty();
+    structEntry(doc,()=>{doc.layers=before.slice();refreshLayers();invalidate();},()=>{doc.layers=after.slice();refreshLayers();invalidate();},0);toast(where==='front'?'Ön plana alındı.':'Arka plana gönderildi.');};
+  window.mselBar=(bar)=>{bar.classList.add('on');bar.innerHTML='';const b=(t,fn)=>h('button',{class:'ibtn',onclick:fn},t);
+    bar.append(h('span',{class:'note',style:'padding:0 6px'},MSEL.length+' ürün seçili'),b('En öne',()=>partOrder(MSEL,'front')),b('En arkaya',()=>partOrder(MSEL,'back')),b('Sil',()=>mselDelete()),b('Seçimi bırak',()=>mselClear()));};
+  /* renk ve kumaş hedefleri: çoklu seçim ya da seçili ürün */
+  const colorTargets=()=>{if(MSEL.length)return MSEL.slice();const d=D(),L=d&&d.layers[d.active];if(L&&L.isVec&&L.vec&&(VSEL>=0||VSELS.length)&&L.tag!=='figure')return[L];return[];};
+  const recolor=(L,hx)=>{(L.vec||[]).forEach(q=>{const fx=(f)=>{f.fg=hx;if(f.c2)f.c2=hx;};
+    if(q.kind==='tpl'){let done=false;if(q.fillAll){if(q.fillAll.fab)fx(q.fillAll.fab);else q.fillAll.col=hx;done=true;}if(q.paint&&q.paint.length){q.paint.forEach(sd=>{if(sd.fab)fx(sd.fab);else sd.col=hx;});done=true;}if(!done)q.stroke=hx;}
+    else{if(q.fab)fx(q.fab);else if(q.fill)q.fill=hx;else if(q.stroke)q.stroke=hx;}});vecRender(L);};
+  let FGP=null;
+  window.fgChanged=(hx)=>{if(S.target==='bg'||window._fgMute)return;const Ls=colorTargets();if(!Ls.length)return;
+    if(!FGP||FGP.Ls.length!==Ls.length||FGP.Ls.some((L,i)=>L!==Ls[i])){if(FGP)clearTimeout(FGP.t);FGP={Ls,before:Ls.map(L=>JSON.stringify(L.vec))};}
+    Ls.forEach(L=>recolor(L,hx));invalidate();markDirty();clearTimeout(FGP.t);
+    FGP.t=setTimeout(()=>{const P=FGP;FGP=null;const after=P.Ls.map(L=>JSON.stringify(L.vec));structEntry(D(),()=>{P.Ls.forEach((L,i)=>{L.vec=JSON.parse(P.before[i]);vecRender(L);});invalidate();},()=>{P.Ls.forEach((L,i)=>{L.vec=JSON.parse(after[i]);vecRender(L);});invalidate();},0);},500);};
+  /* S.fg izlenir: renk karesi, tekerlek, kod kutusu, kartela, damlalık — hepsi seçili ürünü boyar */
+  {let _fg=S.fg;try{Object.defineProperty(S,'fg',{configurable:true,enumerable:true,get(){return _fg;},set(v){const o=_fg;_fg=v;if(v&&v!==o){try{window.fgChanged&&fgChanged(v);}catch(e){}}}});}catch(e){}}
+  /* kumaş: seçili ürüne (yoksa sayfadaki tüm kıyafetlere) boyamadan uygula */
+  const GARCATS=['Kıyafet Türleri','Etek ve Elbise Kesimleri','Kol Modelleri','Yaka Modelleri','Moda Stilleri','Hazır kombin','Kıyafet Yapı Detayları','Paça ve Pantolon Detayları','Kemer ve Bel Detayları','Cep Modelleri'];
+  const fabTargets=()=>{const sel=colorTargets().filter(L=>L.tag==='parca'&&!(L.vec.length===1&&L.vec[0].kind==='poly'&&L.vec[0].fab));if(sel.length)return{Ls:sel,all:false};
+    const all=parcaLayers().filter(L=>{const sp=L.props&&L.props.spec||{};return L.vec.some(q=>q.kind==='tpl')&&Object.keys(sp).some(k=>GARCATS.includes(k));});return{Ls:all,all:true};};
+  window.applyFabricTo=(Ls,fab,phys)=>{const doc=D();const before=Ls.map(L=>JSON.stringify(L.vec)),pb=Ls.map(L=>L.props&&L.props.phys);
+    Ls.forEach(L=>{L.vec.forEach(q=>{if(q.kind==='tpl'){q.fillAll={fab:JSON.parse(JSON.stringify(fab))};q.paint=[];}});if(phys){L.props=L.props||{};L.props.phys=phys;}vecRender(L);});
+    const after=Ls.map(L=>JSON.stringify(L.vec));structEntry(doc,()=>{Ls.forEach((L,i)=>{L.vec=JSON.parse(before[i]);if(L.props)L.props.phys=pb[i];vecRender(L);});invalidate();},()=>{Ls.forEach((L,i)=>{L.vec=JSON.parse(after[i]);if(phys)L.props.phys=phys;vecRender(L);});invalidate();},0);invalidate();markDirty();};
+  window.fabPicked=(fab,name,phys)=>{const T=fabTargets();if(!T.Ls.length)return null;applyFabricTo(T.Ls,fab,phys);
+    return name+(T.all?' sayfadaki '+T.Ls.length+' kıyafete':' seçili '+(T.Ls.length>1?T.Ls.length+' ürüne':'ürüne'))+' uygulandı (2B ve 3B). Rengini sağ panelden değiştirebilirsin.';};
   /* v155: renk seçenekleri (30) — adlar karteladaki eşleşen tona, yoksa standart tona bağlanır; tıklayınca ön renk olur, seçili canlı kıyafet varsa onu da boyar */
   const RENK={'Beyaz':'#ffffff','Siyah':'#111315','Kırmızı':'#c8102e','Bordo':'#7b1e2b','Lacivert':'#1c2f63','Mavi':'#2c5fbf','Açık mavi':'#8ec3ea','Turkuaz':'#30b5b0','Yeşil':'#2e8b3e','Zümrüt yeşili':'#087a50','Haki':'#6b6b3a','Sarı':'#f2c919','Hardal':'#c99a1c','Turuncu':'#ef7a1a','Pembe':'#f2a1b7','Pudra':'#e8c4c0','Fuşya':'#d0257a','Mor':'#6a2c8e','Lila':'#b79ad6','Lavanta':'#c8b6e2','Bej':'#d8c3a5','Krem':'#f3e9d2','Kahverengi':'#6b4226','Taba':'#a0612f','Gri':'#8a8d91','Antrasit':'#383e42','Gümüş':'#c0c3c7','Altın':'#c9a23a','Bronz':'#a0703a','Bakır':'#b8734a'};
   const renkHex=(n)=>{try{for(const k of (typeof KARTELA!=='undefined'?KARTELA:[]))for(const e of (k.c||[]))if(e[0]===n)return e[1];}catch(e){}return RENK[n]||null;};
   window.RENK_HEX=renkHex;window.RENK_NAMES=()=>Object.keys(RENK);
   const ACT={};
-  ACT['Renk Seçenekleri']=(L,item)=>{const hx=renkHex(item);if(!hx)return null;
-    S.target='fg';setFg(hx,true);
-    if(L&&L.gar&&L.gar.spec){const doc=D(),old=L.gar.spec.fillCol;L.gar.spec.fillCol=hx;garRender(doc,L);
-      histPush(doc,{t:'fn',undo:()=>{L.gar.spec.fillCol=old;garRender(doc,L);},redo:()=>{L.gar.spec.fillCol=hx;garRender(doc,L);},bytes:64});
-      return 'Renk: '+item+' ('+hx.toUpperCase()+') — kıyafet boyandı, ön renk ayarlandı';}
-    if(L&&L.isVec&&Array.isArray(L.vec)&&L.vec.some(q=>q.fab)){const doc=D(),old=L.vec.map(q=>q.fab?JSON.stringify(q.fab):null);
-      const ap=(fs)=>{L.vec.forEach((q,i)=>{if(fs[i])q.fab=JSON.parse(fs[i]);});vecRender(L);invalidate();};
-      const nw=L.vec.map(q=>{if(!q.fab)return null;const f=JSON.parse(JSON.stringify(q.fab));f.fg=hx;if(f.c2)f.c2=hx;return JSON.stringify(f);});ap(nw);
-      histPush(doc,{t:'fn',undo:()=>ap(old),redo:()=>ap(nw),bytes:64});
-      return 'Renk: '+item+' ('+hx.toUpperCase()+') — kumaş rengi değişti, ön renk ayarlandı';}
-    if(L&&L.isVec&&Array.isArray(L.vec)&&L.vec.some(q=>q.kind==='tpl')){const doc=D(),old=L.vec.map(q=>q.stroke);
-      const ap=(cols)=>{L.vec.forEach((q,i)=>{if(q.kind==='tpl')q.stroke=cols[i];});vecRender(L);invalidate();};
-      const nw=L.vec.map(q=>q.kind==='tpl'?hx:q.stroke);ap(nw);histPush(doc,{t:'fn',undo:()=>ap(old),redo:()=>ap(nw),bytes:64});
-      return 'Renk: '+item+' ('+hx.toUpperCase()+') — seçili parça boyandı, ön renk ayarlandı';}
-    if(L&&L.isVec&&Array.isArray(L.vec)&&L.vec.some(q=>q.fill)){const doc=D(),old=L.vec.map(q=>q.fill);
-      const ap=(cols)=>{L.vec.forEach((q,i)=>{if(cols[i]!=null)q.fill=cols[i];});vecRender(L);invalidate();};
-      const nw=old.map(f=>f?hx:null);ap(nw);
-      histPush(doc,{t:'fn',undo:()=>ap(old),redo:()=>ap(nw),bytes:64});
-      return 'Renk: '+item+' ('+hx.toUpperCase()+') — '+nw.filter(Boolean).length+' parça boyandı, ön renk ayarlandı';}
-    return 'Renk: '+item+' ('+hx.toUpperCase()+') — ön renk ayarlandı';};
+  ACT['Renk Seçenekleri']=(L,item)=>{const hx=renkHex(item);if(!hx)return null;const n=(window.MSEL&&MSEL.length)||((VSEL>=0||VSELS.length)&&L&&L.isVec?1:0);S.target='fg';setFg(hx,true);
+    return 'Renk: '+item+' ('+hx.toUpperCase()+')'+(n?' — seçili '+(n>1?n+' ürün':'ürün')+' boyandı':' — ön renk ayarlandı (bir ürün seçersen ona uygulanır)');};
   ACT['Kumaş Çeşitleri']=(L,item)=>window._KUMAS_ACT(L,item);
   ACT['Kumaş Desenleri']=(L,item)=>window._DESEN_ACT(L,item);
   ACT['Manken Çeşitleri']=(L,item)=>window._MANKEN_ACT(L,item);
