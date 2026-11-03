@@ -6553,6 +6553,37 @@ renderSide=function(){
     for(let i=0;i<p.count;i++){const x=p.getX(i);const th=Math.max(-2.6,Math.min(2.6,x/R));
       const nx=(1-k)*x+k*R*Math.sin(th);const nz=-k*R*(1-Math.cos(th));p.setX(i,nx);p.setZ(i,nz);}
     p.needsUpdate=true;geo.computeVertexNormals();return geo;}
+  /* Kumaş sarkma (konum tabanlı gevşetme): üst kenar sabit, yer çekimi, komşu mesafe kısıtları,
+     gövde ve bacak silindirlerine çarpışma. Tek seferlik yaklaşım; gerçek kumaş simülasyonu değildir. */
+  function v3BodyR(y){const P=[[.84,.15],[.94,.16],[1.05,.15],[1.17,.165],[1.27,.185],[1.37,.165],[1.43,.12],[1.47,.07]];
+    if(y<=P[0][0])return .15;if(y>=P[P.length-1][0])return P[P.length-1][1];
+    for(let i=1;i<P.length;i++)if(y<=P[i][0]){const t=(y-P[i-1][0])/(P[i][0]-P[i-1][0]);return P[i-1][1]+(P[i][1]-P[i-1][1])*t;}
+    return .15;}
+  function v3Drape(geo,W,H,zOff){
+    const p=geo.attributes.position,n=p.count,g=32,N=g+1;
+    const X=new Float64Array(n),Y=new Float64Array(n),Z=new Float64Array(n);
+    for(let i=0;i<n;i++){X[i]=p.getX(i);Y[i]=p.getY(i)+.9;Z[i]=p.getZ(i)+zOff;}
+    const L=(a,b)=>Math.hypot(X[a]-X[b],Y[a]-Y[b],Z[a]-Z[b]);const E=[];
+    for(let iy=0;iy<N;iy++)for(let ix=0;ix<N;ix++){const i=iy*N+ix;
+      if(ix<g){E.push([i,i+1,L(i,i+1)]);}
+      if(iy<g){E.push([i,i+N,L(i,i+N)]);}
+      if(ix<g&&iy<g){E.push([i,i+N+1,L(i,i+N+1)]);}}
+    const pinned=i=>Math.floor(i/N)<=1;
+    const collide=i=>{let x=X[i],y=Y[i],z=Z[i];
+      if(y<.02||y>1.5)return;
+      if(y<.9){for(const cx of [-.09,.09]){const dx=x-cx,d=Math.hypot(dx,z);const r=.115;if(d<r&&d>1e-6){const k=r/d;x=cx+dx*k;z=z*k;}}}
+      else{const rr=v3BodyR(y),rx=rr+.025,rz=rr*.66+.025;const e=(x/rx)*(x/rx)+(z/rz)*(z/rz);if(e<1&&e>1e-9){const sc=1/Math.sqrt(e);x*=sc;z*=sc;}}
+      X[i]=x;Y[i]=y;Z[i]=z;};
+    for(let it=0;it<90;it++){
+      for(let i=0;i<n;i++)if(!pinned(i))Y[i]-=.0009;
+      for(let k=0;k<3;k++){
+        for(const [a,b,l] of E){const dx=X[b]-X[a],dy=Y[b]-Y[a],dz=Z[b]-Z[a];const d=Math.hypot(dx,dy,dz)||1e-9;const diff=(d-l)/d;
+          const wa=pinned(a)?0:1,wb=pinned(b)?0:1,sw=wa+wb;if(sw===0)continue;
+          const ka=wa/sw*diff*.5*2,kb=wb/sw*diff*.5*2;
+          X[a]+=dx*ka;Y[a]+=dy*ka;Z[a]+=dz*ka;X[b]-=dx*kb;Y[b]-=dy*kb;Z[b]-=dz*kb;}
+        for(let i=0;i<n;i++)if(!pinned(i))collide(i);}}
+    for(let i=0;i<n;i++){p.setX(i,X[i]);p.setY(i,Y[i]-.9);p.setZ(i,Z[i]-zOff);}
+    p.needsUpdate=true;geo.computeVertexNormals();return geo;}
   function v3Update(force){
     const V=v3Init();if(!V)return;const d=D();if(!d||S.mode!=='design')return;
     const ph=physOf(d);const key=d.rev+'|'+V.bend+'|'+ph.name+'|'+ph.rough;
@@ -6561,8 +6592,8 @@ renderSide=function(){
     const tex=new THREE.CanvasTexture(v3GarmentCanvas(d));tex.encoding=THREE.sRGBEncoding;
     const H=1.8,W=H*d.w/d.h;
     const gm=new THREE.MeshStandardMaterial({map:tex,transparent:true,alphaTest:.02,side:THREE.DoubleSide,roughness:ph.rough,metalness:ph.metal});
-    const f=new THREE.Mesh(v3Bent(W,H,V.bend),gm);f.position.set(0,.9,.15);f.name='On';
-    const b=new THREE.Mesh(v3Bent(W,H,V.bend),gm);b.position.set(0,.9,-.15);b.rotation.y=Math.PI;b.name='Arka';
+    const f=new THREE.Mesh(v3Drape(v3Bent(W,H,V.bend),W,H,.15),gm);f.position.set(0,.9,.15);f.name='On';
+    const b=new THREE.Mesh(v3Drape(v3Bent(W,H,V.bend),W,H,.15),gm);b.position.set(0,.9,-.15);b.rotation.y=Math.PI;b.name='Arka';
     V.body.add(f);V.body.add(b);V.garment=[f,b];v3Draw();
   }
   /* 3B mesh'i OBJ olarak dışa aktar (gövde + tasarım yüzeyleri) */
