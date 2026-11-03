@@ -25,7 +25,7 @@
 #docTabs .vb button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
 #views{flex:1;min-height:0;display:flex;position:relative}
 #views>#cvwrap{flex:1;min-width:0}
-#view3d{display:none;flex:1;min-width:0;position:relative;background:#e9eaee;overflow:hidden;touch-action:none}
+#view3d{display:none;flex:1;min-width:0;position:relative;background:#0b0d10;overflow:hidden;touch-action:none}
 #views[data-v="split"] #view3d{display:block;border-left:1px solid var(--line)}
 #views[data-v="3d"] #view3d{display:block}
 #views[data-v="3d"] #cvwrap{display:none}
@@ -6628,34 +6628,43 @@ renderSide=function(){
     if(V3)return V3;if(typeof THREE==='undefined')return null;
     const host=gid('view3d');
     const r=new THREE.WebGLRenderer({antialias:true});
-    r.setPixelRatio(Math.min(2,window.devicePixelRatio||1));r.setClearColor(0xe9eaee,1);
+    r.setPixelRatio(Math.min(2,window.devicePixelRatio||1));r.setClearColor(0x0b0d10,1);
     host.insertBefore(r.domElement,host.firstChild);
     const scene=new THREE.Scene();const cam=new THREE.PerspectiveCamera(30,1,.05,60);
-    scene.add(new THREE.HemisphereLight(0xffffff,0x9a9aa6,.95));
+    scene.add(new THREE.HemisphereLight(0xffffff,0x5a5f68,.75));
     const dl=new THREE.DirectionalLight(0xffffff,.75);dl.position.set(2,4,3);scene.add(dl);
-    scene.add(new THREE.GridHelper(4,20,0xb8bcc6,0xd6d9df));
+    /* v164: siyah stüdyo — zeminde ve arka duvarda kareli ızgara, tüm alan koyu */
+    {const gf=new THREE.GridHelper(10,40,0x4a5059,0x262a31);scene.add(gf);const gw=new THREE.GridHelper(10,40,0x4a5059,0x262a31);gw.rotation.x=Math.PI/2;gw.position.set(0,5,-2.2);scene.add(gw);}
     const body=new THREE.Group();scene.add(body);
-    const mat=new THREE.MeshStandardMaterial({color:0xe6e1da,roughness:.7});
+    const mat=new THREE.MeshStandardMaterial({color:0xe6e1da,roughness:.7,envMapIntensity:.25});
     const add=(geo,x,y,z,sx,sy,sz,rz)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.scale.set(sx,sy,sz);if(rz)m.rotation.z=rz;body.add(m);return m;};
     const parts=buildProc(body,mat);
     /* v161: stüdyo ortamı (yansıma haritası) — metalik, saten, holografik ve parlak yüzeyler gerçekçi yansısın */
     try{const ec=newCanvas(512,256),eg=ec.getContext('2d');const gr=eg.createLinearGradient(0,0,0,256);gr.addColorStop(0,'#ffffff');gr.addColorStop(.45,'#dfe4ea');gr.addColorStop(.55,'#9aa3ad');gr.addColorStop(1,'#3a3f46');eg.fillStyle=gr;eg.fillRect(0,0,512,256);
       eg.fillStyle='rgba(255,255,255,.95)';eg.fillRect(60,40,90,60);eg.fillRect(330,30,120,50);eg.fillStyle='rgba(255,230,200,.8)';eg.fillRect(220,60,60,40);
       const et=new THREE.CanvasTexture(ec);et.mapping=THREE.EquirectangularReflectionMapping;et.encoding=THREE.sRGBEncoding;const pm=new THREE.PMREMGenerator(r);scene.environment=pm.fromEquirectangular(et).texture;et.dispose();pm.dispose();}catch(e){}
-    V3={r,scene,cam,body,host,parts,mat,pose:'A',rev:-1,revView:null,garment:[],drag:null,dist:4.8,rot:0,tilt:0,bend:.35,key:null};
+    V3={r,scene,cam,body,host,parts,mat,pose:'A',rev:-1,revView:null,garment:[],drag:null,dist:4.8,rot:0,tilt:0,bend:.35,key:null,ty:1.05,userZoom:false};
     const c=r.domElement;
     c.addEventListener('pointerdown',e=>{if(window.v3PartDown&&v3PartDown(e))return;V3.drag={x:e.clientX,y:e.clientY,rot:V3.rot,tilt:V3.tilt};c.setPointerCapture(e.pointerId);});
     c.addEventListener('pointermove',e=>{if(!V3.drag)return;V3.rot=V3.drag.rot+(e.clientX-V3.drag.x)*.01;V3.tilt=Math.max(-.6,Math.min(.6,V3.drag.tilt+(e.clientY-V3.drag.y)*.005));v3Draw();});
     c.addEventListener('pointerup',()=>{V3.drag=null;});
-    c.addEventListener('wheel',e=>{e.preventDefault();V3.dist=Math.max(2.2,Math.min(9,V3.dist*(e.deltaY>0?1.08:.92)));v3Draw();},{passive:false});
-    c.addEventListener('dblclick',()=>{V3.rot=0;V3.tilt=0;V3.dist=4.8;v3Draw();});
+    c.addEventListener('wheel',e=>{e.preventDefault();V3.userZoom=true;V3.dist=Math.max(2.2,Math.min(9,V3.dist*(e.deltaY>0?1.08:.92)));v3Draw();},{passive:false});
+    c.addEventListener('dblclick',()=>{V3.rot=0;V3.tilt=0;V3.userZoom=false;v3Fit();v3Draw();});
     new ResizeObserver(()=>{v3Size();v3Draw();}).observe(host);
     v3Size();return V3;
   }
   function v3Size(){if(!V3)return;const w=V3.host.clientWidth||400,h=V3.host.clientHeight||400;
-    V3.r.setSize(w,h,false);V3.cam.aspect=w/h;V3.cam.updateProjectionMatrix();}
+    V3.r.setSize(w,h,false);V3.cam.aspect=w/h;V3.cam.updateProjectionMatrix();if(!V3.userZoom)v3Fit();}
+  /* v164: mankeni baştan ayağa görünür alana sığdır (dar / geniş görünüm; ayar paneli kapalıyken tüm yükseklik) */
+  function v3Fit(){if(!V3)return;const bx=new THREE.Box3();V3.body.updateMatrixWorld(true);
+    V3.body.traverse(o=>{if(!o.isMesh||V3.garment.includes(o))return;o.geometry.computeBoundingBox&&!o.geometry.boundingBox&&o.geometry.computeBoundingBox();const b=o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);bx.union(b);});
+    if(bx.isEmpty()){bx.set(new THREE.Vector3(-.4,0,-.2),new THREE.Vector3(.4,1.85,.2));}
+    const sz=bx.getSize(new THREE.Vector3()),ct=bx.getCenter(new THREE.Vector3());const t=Math.tan(V3.cam.fov*Math.PI/360),asp=V3.cam.aspect||1;
+    const dV=(sz.y*1.12/2)/t,dH=(Math.max(sz.x,.7)*1.35/2)/(t*asp);V3.dist=Math.max(1.6,Math.min(14,Math.max(dV,dH)+sz.z/2));V3.ty=ct.y;}
+  window.v3Fit=()=>{v3Fit();v3Draw();};
+  {const _sb0=setBody;setBody=function(V){const r=_sb0.apply(this,arguments);const f=()=>{if(V&&!V.userZoom){v3Fit();v3Draw();}};f();setTimeout(f,600);return r;};}
   function v3Draw(){if(!V3)return;V3.body.rotation.y=V3.rot;V3.body.rotation.x=V3.tilt;
-    V3.cam.position.set(0,1.2,V3.dist);V3.cam.lookAt(0,1.05,0);V3.r.render(V3.scene,V3.cam);try{window.v3HandlesUpdate&&v3HandlesUpdate();}catch(e){}}
+    V3.cam.position.set(0,V3.ty+.08,V3.dist);V3.cam.lookAt(0,V3.ty,0);V3.r.render(V3.scene,V3.cam);try{window.v3HandlesUpdate&&v3HandlesUpdate();}catch(e){}}
   const PHYS=['Cotton_40s_Chambray','Cotton_40s_Poplin','Cotton_40s_Stretch_Poplin','Cotton_50s_Poplin','Cotton_Canvas','Cotton_Gabardine','Cotton_Heavy_Canvas','Cotton_Heavy_Twill','Cotton_Oxford','Cotton_Plush','Cotton_Sateen','Cotton_Stretch_Sateen','Cotton_Stretch_Velvet','Cotton_Terry_Cloth','Cotton_Twill','Cotton_Voile','Denim_Lightweight','Denim_Raw','Denim_Stretch','Fur_Angora','Fur_Fox','Fur_Mink_Skin','Fur_Mohair','Fur_Muskrat_Belly','Fur_Rabbit','Interlining_Acetate_Lining','Knit_Cotton_Jersey','Knit_Cotton_Rayon_Jersey','Knit_Fleece_Terry','Knit_Pique_Jersey','Knit_Ponte_Jersey','Knit_Terry','Leather_Lambskin','Linen','Muslin_18X20','Muslin_22X22','Muslin_28X36','Muslin_32X38','Nylon_Canvas','Nylon_Featherweight','Nylon_Matte','Polyester_Taffeta','Rib_1X1_319gsm','Rib_1X1_486gsm','Rib_2X2_468gsm','Sherpa_Fleece_Poly_240gsm','Sherpa_Fleece_Poly_300gsm','Silk_Charmeuse','Silk_Chiffon','Silk_Crepe_Chine','Silk_Double_Georgette','Silk_Duchess_Satin','Silk_Faille','Silk_Knit_Jersey'];
   /* ön ayar adından yaklaşık yüzey değerleri (pürüzlülük, metalik); gerçek fizik simülasyonu değildir */
   function physVals(name){const n=name||'';
@@ -6793,7 +6802,7 @@ renderSide=function(){
   };
   /* bedene sarma kaydırıcısı (3B alanın köşesinde) */
   (function(){const host=gid('view3d');if(!host)return;
-    const box=el('div',{id:'v3ctl',style:'position:absolute;left:8px;right:8px;bottom:8px;background:rgba(255,255,255,.92);border:1px solid #cfd3da;border-radius:8px;padding:6px 8px;font:12px var(--f-ui,system-ui);color:#333;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;z-index:3'},
+    const box=el('div',{id:'v3ctl',style:'position:absolute;left:8px;right:8px;bottom:48px;background:rgba(255,255,255,.94);border:1px solid #cfd3da;border-radius:8px;padding:6px 8px;font:12px var(--f-ui,system-ui);color:#333;display:none;flex-wrap:wrap;gap:6px 8px;align-items:center;z-index:5'},
       el('span',{txt:'Bedene sar'}),
       el('input',{type:'range',min:'0',max:'1',step:'0.05',value:'0.35',style:'width:120px',on:['input',e=>{const V=v3Init();if(V){V.bend=+e.target.value;v3Update(true);}}]}),
       el('select',{id:'v3pose',title:'Manken pozu (yerleşik mankende aktif)',style:'font-size:12px;background:#fff;color:#333;border:1px solid #cfd3da;border-radius:6px;padding:2px 4px',on:['change',e=>{const V=v3Init();if(V)setPose(V,e.target.value);}]},
@@ -6805,7 +6814,10 @@ renderSide=function(){
       el('label',{style:'font-size:12px;color:#333;display:flex;align-items:center;gap:4px'},'Kalınlık',el('input',{type:'range',min:'0.85',max:'1.2',step:'0.01',value:'1',style:'width:70px',on:['input',e=>{const V=v3Init();if(V){V.body.scale.x=V.body.scale.z=+e.target.value;}}]})),
       el('button',{type:'button',txt:'Yerleşik manken',title:'Yerleşik anatomik manken',style:'border:1px solid #cfd3da;background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer',on:['click',()=>{const V=v3Init();if(V){setBody(V,'proc');}}]}),
       el('button',{type:'button',txt:'OBJ',title:'3B mesh (OBJ) indir',style:'border:1px solid #cfd3da;background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer',on:['click',()=>window.exportOBJ()]}));
-    host.append(box);})();
+    /* v164: ayar paneli varsayılan kapalı — mankenin önünü kapatmaz */
+    const tg=el('button',{id:'v3tog',type:'button',txt:'⚙ 3B ayarları',title:'3B ayarlarını aç / kapat',style:'position:absolute;left:8px;bottom:8px;z-index:5;border:1px solid #3a3f46;background:rgba(20,22,26,.85);color:#e8eaee;border-radius:8px;padding:6px 10px;font:12px var(--f-ui,system-ui);cursor:pointer',on:['click',()=>{const on=box.style.display==='none';box.style.display=on?'flex':'none';tg.textContent=on?'✕ Ayarları kapat':'⚙ 3B ayarları';}]});
+    const fit=el('button',{id:'v3fit',type:'button',txt:'⤢ Tam görünüm',title:'Mankeni tam sığdır (çift tıklama da sıfırlar)',style:'position:absolute;right:8px;bottom:8px;z-index:5;border:1px solid #3a3f46;background:rgba(20,22,26,.85);color:#e8eaee;border-radius:8px;padding:6px 10px;font:12px var(--f-ui,system-ui);cursor:pointer',on:['click',()=>{const V=v3Init();if(V){V.rot=0;V.tilt=0;V.userZoom=false;window.v3Fit();}}]});
+    host.append(box,tg,fit);})();
   function setView3(mode){
     S.view3=mode;
     gid('views').setAttribute('data-v',mode);
