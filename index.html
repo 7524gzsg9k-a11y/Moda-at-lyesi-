@@ -3992,9 +3992,11 @@ window.addEventListener('pointerup',()=>{const d=vsDrag;vsDrag=null;if(!d)return
 let vnDrag=null;
 window.addEventListener('pointermove',e=>{
   if(!vnDrag)return;const p=hoverXY(e);const sh=vnDrag.L.vec[vnDrag.i];if(!sh||!sh.pts)return;
-  sh.pts[vnDrag.k]=[p.x,p.y];vecRender(vnDrag.L);invalidate();
+  if(!vnDrag.pts0)vnDrag.pts0=sh.pts.map(q=>q.slice());sh.pts[vnDrag.k]=[p.x,p.y];vecRender(vnDrag.L);invalidate();
 });
-window.addEventListener('pointerup',()=>{vnDrag=null;});
+window.addEventListener('pointerup',()=>{const d=vnDrag;vnDrag=null;if(!d||!d.pts0)return;const sh=d.L.vec[d.i];if(!sh)return;
+  /* v157: tek nokta sürükleme geri alınabilir */
+  const before=d.pts0,after=sh.pts.map(q=>q.slice());structEntry(D(),()=>{sh.pts=before.map(q=>q.slice());vecRender(d.L);renderSide();invalidate();},()=>{sh.pts=after.map(q=>q.slice());vecRender(d.L);renderSide();invalidate();},0);markDirty();});
 /* tül: dalgalı etek kenarlı, yarı saydam çokgen; aktif vektör katmanına eklenir */
 function addTul(){
   const doc=D();let L=doc.layers[doc.active];
@@ -7065,6 +7067,58 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
     'Tote çanta':(c,W,H,f)=>{PL(c,f,[[.62,.52],[.76,.52],[.74,.66],[.64,.66]]);QC(c,f,[.65,.52],[.69,.42],[.73,.52]);QC(c,f,[.66,.52],[.69,.45],[.72,.52]);},
     'Bel çantası':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.42,.5));c.quadraticCurveTo(...f(.5,.47),...f(.58,.5));c.lineTo(...f(.57,.55));c.quadraticCurveTo(...f(.5,.57),...f(.43,.55));c.closePath();c.stroke();dl(c,f,[[.3,.49],[.42,.505]]);dl(c,f,[[.58,.505],[.7,.49]]);dl(c,f,[[.44,.515],[.56,.515]],[3,2]);}
   });
+  /* v157: eksik kumaşlar ve desenler için kalıp üreticileri (FABRICS'e eklenir: Kumaş sekmesinde de seçilebilir) */
+  const hx2=(h)=>{h=(h||'#888888').replace('#','');if(h.length===3)h=h.split('').map(x=>x+x).join('');const n=parseInt(h,16);return[(n>>16)&255,(n>>8)&255,n&255];};
+  const mixc=(a,b,t)=>{const A=hx2(a),B=hx2(b);return'rgb('+A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(',')+')';};
+  const sh=(col,t)=>t>=0?mixc(col,'#ffffff',t):mixc(col,'#000000',-t);
+  const GT=(s,col,fn,bg)=>{const c=newCanvas(s,s),g=c.getContext('2d');g.fillStyle=bg||col;g.fillRect(0,0,s,s);fn(g,s,rng(11),col);return c;};
+  const noise=(g,s,R,col,n,a,sz)=>{for(let i=0;i<n;i++){g.fillStyle=sh(col,(R()-.5)*a);g.fillRect(R()*s,R()*s,sz,sz);}};
+  const heart=(g,x,y,r)=>{g.beginPath();g.moveTo(x,y+r*.9);g.bezierCurveTo(x-r*1.4,y-r*.2,x-r*.6,y-r*1.2,x,y-r*.4);g.bezierCurveTo(x+r*.6,y-r*1.2,x+r*1.4,y-r*.2,x,y+r*.9);g.fill();};
+  const star=(g,x,y,r)=>{g.beginPath();for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,q=i%2?r*.45:r;g.lineTo(x+q*Math.cos(a),y+q*Math.sin(a));}g.closePath();g.fill();};
+  const GENS=[
+    ['g_kasmir','Kaşmir','Katalog',(g,s,R,col)=>{noise(g,s,R,col,9000,.18,1.5);g.globalAlpha=.15;for(let i=0;i<400;i++){g.strokeStyle=sh(col,.3);g.beginPath();const x=R()*s,y=R()*s;g.moveTo(x,y);g.lineTo(x+R()*6-3,y+R()*6-3);g.stroke();}g.globalAlpha=1;}],
+    ['g_poplin','Poplin','Katalog',(g,s,R,col)=>{for(let y=0;y<s;y+=3){g.fillStyle=sh(col,y%6?.06:-.06);g.fillRect(0,y,s,1.5);}noise(g,s,R,col,1500,.08,1);}],
+    ['g_sunideri','Suni deri','Katalog',(g,s,R,col)=>{const gr=g.createLinearGradient(0,0,s,s);gr.addColorStop(0,sh(col,.12));gr.addColorStop(1,sh(col,-.12));g.fillStyle=gr;g.fillRect(0,0,s,s);g.strokeStyle=sh(col,-.25);g.lineWidth=1;for(let i=0;i<260;i++){g.beginPath();g.arc(R()*s,R()*s,3+R()*5,0,6.28);g.stroke();}}],
+    ['g_viskon','Viskon','Katalog',(g,s,R,col)=>{for(let i=-s;i<s*2;i+=24){const gr=g.createLinearGradient(i,0,i+24,s);gr.addColorStop(0,sh(col,0));gr.addColorStop(.5,sh(col,.16));gr.addColorStop(1,sh(col,0));g.fillStyle=gr;g.beginPath();g.moveTo(i,0);g.lineTo(i+24,0);g.lineTo(i+24+s*.4,s);g.lineTo(i+s*.4,s);g.fill();}}],
+    ['g_polyester','Polyester','Katalog',(g,s,R,col)=>{for(let y=0;y<s;y+=2)for(let x=0;x<s;x+=2){g.fillStyle=sh(col,((x+y)/2)%2?.07:-.04);g.fillRect(x,y,2,2);}}],
+    ['g_modal','Modal','Katalog',(g,s,R,col)=>{g.strokeStyle=sh(col,.12);g.lineWidth=1;for(let x=0;x<s;x+=6)for(let y=0;y<s;y+=6){g.beginPath();g.moveTo(x,y);g.lineTo(x+3,y+4);g.lineTo(x+6,y);g.stroke();}}],
+    ['g_elastan','Elastanlı kumaş','Katalog',(g,s,R,col)=>{for(let x=0;x<s;x+=5){g.strokeStyle=sh(col,x%10?.14:-.1);g.lineWidth=2;g.beginPath();for(let y=0;y<=s;y+=8)g.lineTo(x+Math.sin(y/s*Math.PI*4)*1.5,y);g.stroke();}}],
+    ['g_akrilik','Akrilik','Katalog',(g,s,R,col)=>{g.strokeStyle=sh(col,.18);g.lineWidth=2;for(let x=0;x<s;x+=12)for(let y=0;y<s;y+=10){g.beginPath();g.ellipse(x+6,y+5,5,4,0,0,6.28);g.stroke();}noise(g,s,R,col,4000,.2,1.5);}],
+    ['g_tensel','Tensel','Katalog',(g,s,R,col)=>{g.strokeStyle=sh(col,.1);g.lineWidth=1.5;for(let i=-s;i<s;i+=5){g.beginPath();g.moveTo(i,0);g.lineTo(i+s,s);g.stroke();}const gr=g.createLinearGradient(0,0,s,0);gr.addColorStop(0,'rgba(255,255,255,0)');gr.addColorStop(.5,'rgba(255,255,255,.18)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(0,0,s,s);}],
+    ['g_mikrofiber','Mikrofiber','Katalog',(g,s,R,col)=>{noise(g,s,R,col,20000,.07,1);}],
+    ['g_pazen','Pazen','Katalog',(g,s,R,col)=>{g.globalAlpha=.35;g.fillStyle=sh(col,.35);for(let x=0;x<s;x+=64)g.fillRect(x,0,22,s);for(let y=0;y<s;y+=64)g.fillRect(0,y,s,22);g.globalAlpha=1;noise(g,s,R,col,7000,.2,2);}],
+    ['g_patiska','Patiska','Katalog',(g,s,R,col)=>{g.strokeStyle=sh(col,-.09);g.lineWidth=1;for(let i=0;i<s;i+=4){g.beginPath();g.moveTo(i,0);g.lineTo(i,s);g.stroke();g.beginPath();g.moveTo(0,i);g.lineTo(s,i);g.stroke();}}],
+    ['g_soyut','Soyut desen','Katalog',(g,s,R,col)=>{const cs=[sh(col,.5),sh(col,-.3),'#e9b44c','#2f6f73'];for(let i=0;i<14;i++){g.fillStyle=cs[i%4];g.globalAlpha=.75;g.beginPath();g.ellipse(R()*s,R()*s,10+R()*40,6+R()*24,R()*3,0,6.28);g.fill();}g.globalAlpha=1;g.strokeStyle='#111';g.lineWidth=3;for(let i=0;i<5;i++){g.beginPath();g.moveTo(R()*s,R()*s);g.quadraticCurveTo(R()*s,R()*s,R()*s,R()*s);g.stroke();}},'#f3ede2'],
+    ['g_etnik','Etnik desen','Katalog',(g,s,R,col)=>{for(let row=0;row<8;row++){const y=row*32;g.fillStyle=row%2?sh(col,-.3):'#d9a441';for(let x=0;x<s;x+=32){g.beginPath();g.moveTo(x,y+28);g.lineTo(x+16,y+4);g.lineTo(x+32,y+28);g.fill();}g.fillStyle='#f3ede2';for(let x=0;x<s;x+=32){g.beginPath();g.moveTo(x+16,y+12);g.lineTo(x+22,y+20);g.lineTo(x+16,y+28);g.lineTo(x+10,y+20);g.fill();}}},'#7a2e24'],
+    ['g_damask','Damask','Katalog',(g,s,R,col)=>{g.fillStyle=sh(col,.16);for(let k=0;k<4;k++){const cx=(k%2)*128+64,cy=(k>>1)*128+64;for(const m of[1,-1]){g.beginPath();g.moveTo(cx,cy-50);g.bezierCurveTo(cx+m*40,cy-40,cx+m*45,cy+10,cx,cy+50);g.bezierCurveTo(cx+m*15,cy+10,cx+m*10,cy-20,cx,cy-50);g.fill();g.beginPath();g.ellipse(cx+m*28,cy-8,8,16,m*.5,0,6.28);g.fill();}}}],
+    ['g_barok','Barok','Katalog',(g,s,R,col)=>{g.strokeStyle='#c9a23a';g.lineWidth=4;for(let k=0;k<4;k++){const cx=(k%2)*128+64,cy=(k>>1)*128+64;for(let a=0;a<4;a++){g.beginPath();for(let t=0;t<12;t+=.2){const r=4+t*3.2,an=a*Math.PI/2+t*.6;g.lineTo(cx+r*Math.cos(an),cy+r*Math.sin(an));}g.stroke();}}},null],
+    ['g_ombre','Ombre','Katalog',(g,s,R,col)=>{const gr=g.createLinearGradient(0,0,0,s);gr.addColorStop(0,sh(col,.75));gr.addColorStop(.5,sh(col,-.25));gr.addColorStop(1,sh(col,.75));g.fillStyle=gr;g.fillRect(0,0,s,s);}],
+    ['g_degrade','Degrade','Katalog',(g,s,R,col)=>{const gr=g.createLinearGradient(0,0,s,0);gr.addColorStop(0,col);gr.addColorStop(.33,'#e9b44c');gr.addColorStop(.66,'#2f6f73');gr.addColorStop(1,col);g.fillStyle=gr;g.fillRect(0,0,s,s);}],
+    ['g_patchwork','Patchwork','Katalog',(g,s,R,col)=>{const cs=[col,sh(col,.45),'#c9784a','#e5d3a8','#5b7f6a','#8a4f6d'];for(let y=0;y<4;y++)for(let x=0;x<4;x++){const i=(x*3+y*5)%6;g.fillStyle=cs[i];g.fillRect(x*64,y*64,64,64);g.fillStyle='rgba(255,255,255,.35)';if(i%3===0)for(let a=0;a<64;a+=12)g.fillRect(x*64+a,y*64,5,64);else if(i%3===1)for(let a=6;a<64;a+=16)for(let b=6;b<64;b+=16){g.beginPath();g.arc(x*64+a,y*64+b,3,0,6.28);g.fill();}}g.strokeStyle='#fff';g.setLineDash([4,3]);g.lineWidth=1.5;for(let a=0;a<=s;a+=64){g.beginPath();g.moveTo(a,0);g.lineTo(a,s);g.stroke();g.beginPath();g.moveTo(0,a);g.lineTo(s,a);g.stroke();}g.setLineDash([]);}],
+    ['g_kalp','Kalp desenli','Katalog',(g,s,R,col)=>{g.fillStyle=col;for(let y=0;y<4;y++)for(let x=0;x<4;x++)heart(g,x*64+32+(y%2)*32,y*64+32,13);},'#f7e9ec'],
+    ['g_dijital','Dijital baskı','Katalog',(g,s,R,col)=>{const cs=[col,'#e94f37','#3f88c5','#f6ae2d','#1c1c1c','#ffffff'];for(let i=0;i<220;i++){g.fillStyle=cs[(R()*6)|0];const w=4+((R()*5)|0)*8;g.fillRect(((R()*32)|0)*8,((R()*32)|0)*8,w,8);}}],
+    ['g_nakis','Nakış desenli','Katalog',(g,s,R,col)=>{g.strokeStyle=col;g.lineWidth=2;const X=(x,y)=>{g.beginPath();g.moveTo(x-3,y-3);g.lineTo(x+3,y+3);g.moveTo(x+3,y-3);g.lineTo(x-3,y+3);g.stroke();};for(let k=0;k<4;k++){const cx=(k%2)*128+64,cy=(k>>1)*128+64;X(cx,cy);for(let a=0;a<6;a++){const an=a*Math.PI/3;X(cx+12*Math.cos(an),cy+12*Math.sin(an));X(cx+22*Math.cos(an),cy+22*Math.sin(an));}g.strokeStyle='#4f7a4a';X(cx,cy+34);X(cx-6,cy+42);X(cx+6,cy+42);g.strokeStyle=col;}},'#f3ede2'],
+    ['g_cocuk','Çocuk desenleri','Katalog',(g,s,R,col)=>{const cs=['#f6ae2d','#7fc8f8','#f4a6b7','#9bd18b'];for(let y=0;y<4;y++)for(let x=0;x<4;x++){const i=(x+y)%4,cx=x*64+32,cy=y*64+32;g.fillStyle=cs[i];if(i===0)star(g,cx,cy,16);else if(i===1){g.beginPath();g.arc(cx-8,cy,10,0,6.28);g.arc(cx+6,cy-4,12,0,6.28);g.arc(cx+16,cy+2,8,0,6.28);g.fill();}else if(i===2)heart(g,cx,cy,12);else{g.beginPath();g.arc(cx,cy,12,0,6.28);g.fill();}}},'#fffaf0']
+  ];
+  GENS.forEach(([id,n,cat,fn,bg])=>{if(!FABRICS.find(q=>q.id===id))FABRICS.push({id,n,cat,gen:(s,col)=>GT(s||256,col,fn,bg===null?sh(col,-.15):bg)});});
+  /* katalog adı → kumaş/desen kaynağı; f: FABRICS kimliği, p: hazır desen (PRESETS), d: düz renk */
+  const KUMAS={'Pamuk':'pamuk','Saten':'saten','Keten':'keten','Kadife':'kadife','Şifon':'sifon','Denim (Kot)':'denim','Yün':'yun','Kaşmir':'g_kasmir','Dantel':'dantel','Jarse':'jersey','Organze':'organze','Tül':'tul','Krep':'krep','Poplin':'g_poplin','Gabardin':'gabardin','Ribana':'fitilorgu','Polar':'polar','Süet':'suet','Deri':'deri','Suni deri':'g_sunideri','Viskon':'g_viskon','Polyester':'g_polyester','Modal':'g_modal','Elastanlı kumaş':'g_elastan','Brokar':'jakar','Muslin':'muslin','Tafta':'tafta','File (Mesh)':'ag','Fisto':'brode','Buklet':'bukle','Şanel':'tuvit','Triko':'triko','Akrilik':'g_akrilik','Tensel':'g_tensel','İpek':'ipek','Mikrofiber':'g_mikrofiber','Pazen':'g_pazen','Krep saten':'x_saten_ipek','Şantung':'santung','Patiska':'g_patiska'};
+  /* fiziksel ön ayar (3B yüzey): her katalog kumaşına en yakın ön ayar */
+  const KUMAS_PHYS={'Pamuk':'Cotton_50s_Poplin','Saten':'Silk_Duchess_Satin','Keten':'Linen','Kadife':'Cotton_Stretch_Velvet','Şifon':'Silk_Chiffon','Denim (Kot)':'Denim_Raw','Yün':'Cotton_Heavy_Twill','Kaşmir':'Knit_Ponte_Jersey','Dantel':'Cotton_Voile','Jarse':'Knit_Cotton_Jersey','Organze':'Nylon_Featherweight','Tül':'Nylon_Featherweight','Krep':'Silk_Crepe_Chine','Poplin':'Cotton_40s_Poplin','Gabardin':'Cotton_Gabardine','Ribana':'Rib_1X1_319gsm','Polar':'Sherpa_Fleece_Poly_240gsm','Süet':'Leather_Lambskin','Deri':'Leather_Lambskin','Suni deri':'Nylon_Matte','Viskon':'Knit_Cotton_Rayon_Jersey','Polyester':'Polyester_Taffeta','Modal':'Knit_Cotton_Rayon_Jersey','Elastanlı kumaş':'Cotton_40s_Stretch_Poplin','Brokar':'Silk_Faille','Muslin':'Muslin_22X22','Tafta':'Polyester_Taffeta','File (Mesh)':'Nylon_Featherweight','Fisto':'Cotton_Voile','Buklet':'Sherpa_Fleece_Poly_300gsm','Şanel':'Cotton_Heavy_Twill','Triko':'Knit_Ponte_Jersey','Akrilik':'Knit_Fleece_Terry','Tensel':'Cotton_Twill','İpek':'Silk_Charmeuse','Mikrofiber':'Nylon_Matte','Pazen':'Cotton_Plush','Krep saten':'Silk_Double_Georgette','Şantung':'Silk_Faille','Patiska':'Cotton_Voile'};
+  const DESEN={'Düz':{d:1},'Çizgili':{f:'cizgi_ince'},'Dikey çizgili':{p:'cizgi-d'},'Yatay çizgili':{p:'cizgi-y'},'Puantiyeli':{p:'puan'},'Pötikare':{p:'pötikare'},'Ekose':{p:'ekose'},'Kazayağı':{p:'pied'},'Leopar':{f:'leopar'},'Zebra':{f:'zebra'},'Yılan derisi':{f:'yilan'},'Kaplan deseni':{f:'kaplan'},'Çiçek desenli':{f:'cicek'},'Geometrik':{p:'baklava'},'Soyut desen':{f:'g_soyut'},'Etnik desen':{f:'g_etnik'},'Paisley':{f:'paisley'},'Damask':{f:'g_damask'},'Barok':{f:'g_barok'},'Kamuflaj':{f:'kamuf'},'Batik':{f:'batik'},'Ombre':{f:'g_ombre'},'Degrade':{f:'g_degrade'},'Mermer desen':{f:'mermer'},'Balıksırtı':{p:'balik'},'Patchwork':{f:'g_patchwork'},'Dalga deseni':{p:'dalga'},'Kalp desenli':{f:'g_kalp'},'Yıldız desenli':{p:'yildiz'},'Dijital baskı':{f:'g_dijital'},'Nakış desenli':{f:'g_nakis'},'Çocuk desenleri':{f:'g_cocuk'}};
+  window.KUMAS_MAP=KUMAS;window.KUMAS_PHYS=KUMAS_PHYS;window.DESEN_MAP=DESEN;
+  /* her kumaşın tipik rengi (Renk Seçenekleri'nden seçilince parçanın rengi değişir) */
+  const KCOL={'Pamuk':'#efe6d2','Saten':'#c9a9b6','Keten':'#cdbb98','Kadife':'#6e1426','Şifon':'#e8c4c0','Denim (Kot)':'#2e4a7d','Yün':'#7d6b5a','Kaşmir':'#c8b49a','Dantel':'#f3e9d2','Jarse':'#8d939b','Organze':'#e6dff2','Tül':'#f2e6ee','Krep':'#3a2f4a','Poplin':'#dde6ef','Gabardin':'#a89268','Ribana':'#5b7f6a','Polar':'#b7d6f2','Süet':'#a0612f','Deri':'#4a3020','Suni deri':'#2b2b2b','Viskon':'#d0257a','Polyester':'#3a5fcd','Modal':'#b9a4e0','Elastanlı kumaş':'#30b5b0','Brokar':'#c9a23a','Muslin':'#eee4cf','Tafta':'#7b1e2b','File (Mesh)':'#1c1f26','Fisto':'#ffffff','Buklet':'#e9dfcf','Şanel':'#c4b8a8','Triko':'#c99a1c','Akrilik':'#ef7a1a','Tensel':'#6f8cb8','İpek':'#d8c3a5','Mikrofiber':'#6b6b3a','Pazen':'#8a4f6d','Krep saten':'#1c2f63','Şantung':'#b06a3b','Patiska':'#f6f1e7'};
+  const fg0=(item)=>KCOL[item]||(S.fg&&S.fg.toLowerCase()!=='#ffffff'?S.fg:'#6b7a8f');
+  const swatchShape=(src,name)=>{const doc=D(),W=doc.w,H=doc.h,x0=.66*W,y0=.1*H,w=.24*W,hh=.16*W;
+    const s={kind:'poly',name,pts:[[x0,y0],[x0+w,y0],[x0+w,y0+hh],[x0,y0+hh]],fill:null,stroke:'#55595f',sw:Math.max(2,W/600)};const col=src.col||fg0(src.item);
+    if(src.d)s.fill=col;else if(src.p)s.fab={active:{kind:'preset',id:src.p},c1:'#f5f1ea',c2:col,c3:sh(col,-.3),rep:S.pat.fillRepeat||'straight',fg:col};
+    else s.fab={active:{kind:'fabric',id:src.f},rep:S.pat.fillRepeat||'straight',fg:col};return s;};
+  window.swatchShape=swatchShape;
+  const placeSwatch=(src,label,phys)=>{const sh2=swatchShape(src,label);if(!placeShape(sh2,label))return null;const d=D(),L=d.layers[d.active];L.props=L.props||{};if(phys)L.props.phys=phys;return L;};
+  /* ACT tanımlandıktan sonra bağlanır (aşağıda) */
+  window._KUMAS_ACT=(L,item)=>{const id=KUMAS[item];if(!id)return null;const NL=placeSwatch({f:id,item},'Kumaş: '+item,KUMAS_PHYS[item]);return NL?'Kumaş: '+item+' parça olarak eklendi (3B ön ayar: '+(KUMAS_PHYS[item]||'').replace(/_/g,' ')+'). Köşe ve kenar noktalarından boyutlandırabilirsin.':null;};
+  window._DESEN_ACT=(L,item)=>{const src=DESEN[item];if(!src)return null;const NL=placeSwatch(Object.assign({},src,{col:(S.fg&&!/^#(22272e|ffffff)$/i.test(S.fg))?S.fg:'#2a3550'}),'Desen: '+item);return NL?'Desen: '+item+' parça olarak eklendi. Köşe ve kenar noktalarından boyutlandırabilirsin.':null;};
   /* v155: renk seçenekleri (30) — adlar karteladaki eşleşen tona, yoksa standart tona bağlanır; tıklayınca ön renk olur, seçili canlı kıyafet varsa onu da boyar */
   const RENK={'Beyaz':'#ffffff','Siyah':'#111315','Kırmızı':'#c8102e','Bordo':'#7b1e2b','Lacivert':'#1c2f63','Mavi':'#2c5fbf','Açık mavi':'#8ec3ea','Turkuaz':'#30b5b0','Yeşil':'#2e8b3e','Zümrüt yeşili':'#087a50','Haki':'#6b6b3a','Sarı':'#f2c919','Hardal':'#c99a1c','Turuncu':'#ef7a1a','Pembe':'#f2a1b7','Pudra':'#e8c4c0','Fuşya':'#d0257a','Mor':'#6a2c8e','Lila':'#b79ad6','Lavanta':'#c8b6e2','Bej':'#d8c3a5','Krem':'#f3e9d2','Kahverengi':'#6b4226','Taba':'#a0612f','Gri':'#8a8d91','Antrasit':'#383e42','Gümüş':'#c0c3c7','Altın':'#c9a23a','Bronz':'#a0703a','Bakır':'#b8734a'};
   const renkHex=(n)=>{try{for(const k of (typeof KARTELA!=='undefined'?KARTELA:[]))for(const e of (k.c||[]))if(e[0]===n)return e[1];}catch(e){}return RENK[n]||null;};
@@ -7075,6 +7129,11 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
     if(L&&L.gar&&L.gar.spec){const doc=D(),old=L.gar.spec.fillCol;L.gar.spec.fillCol=hx;garRender(doc,L);
       histPush(doc,{t:'fn',undo:()=>{L.gar.spec.fillCol=old;garRender(doc,L);},redo:()=>{L.gar.spec.fillCol=hx;garRender(doc,L);},bytes:64});
       return 'Renk: '+item+' ('+hx.toUpperCase()+') — kıyafet boyandı, ön renk ayarlandı';}
+    if(L&&L.isVec&&Array.isArray(L.vec)&&L.vec.some(q=>q.fab)){const doc=D(),old=L.vec.map(q=>q.fab?JSON.stringify(q.fab):null);
+      const ap=(fs)=>{L.vec.forEach((q,i)=>{if(fs[i])q.fab=JSON.parse(fs[i]);});vecRender(L);invalidate();};
+      const nw=L.vec.map(q=>{if(!q.fab)return null;const f=JSON.parse(JSON.stringify(q.fab));f.fg=hx;if(f.c2)f.c2=hx;return JSON.stringify(f);});ap(nw);
+      histPush(doc,{t:'fn',undo:()=>ap(old),redo:()=>ap(nw),bytes:64});
+      return 'Renk: '+item+' ('+hx.toUpperCase()+') — kumaş rengi değişti, ön renk ayarlandı';}
     if(L&&L.isVec&&Array.isArray(L.vec)&&L.vec.some(q=>q.kind==='tpl')){const doc=D(),old=L.vec.map(q=>q.stroke);
       const ap=(cols)=>{L.vec.forEach((q,i)=>{if(q.kind==='tpl')q.stroke=cols[i];});vecRender(L);invalidate();};
       const nw=L.vec.map(q=>q.kind==='tpl'?hx:q.stroke);ap(nw);histPush(doc,{t:'fn',undo:()=>ap(old),redo:()=>ap(nw),bytes:64});
@@ -7085,6 +7144,8 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
       histPush(doc,{t:'fn',undo:()=>ap(old),redo:()=>ap(nw),bytes:64});
       return 'Renk: '+item+' ('+hx.toUpperCase()+') — '+nw.filter(Boolean).length+' parça boyandı, ön renk ayarlandı';}
     return 'Renk: '+item+' ('+hx.toUpperCase()+') — ön renk ayarlandı';};
+  ACT['Kumaş Çeşitleri']=(L,item)=>window._KUMAS_ACT(L,item);
+  ACT['Kumaş Desenleri']=(L,item)=>window._DESEN_ACT(L,item);
   window.CAT_ACT=ACT;
   window.catAction=(L,cat,item)=>{const fn=ACT[cat];if(!fn)return null;try{return fn(L,item);}catch(e){return null;}};
   window.TPL_NAMES=()=>Object.keys(TPL);
