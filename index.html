@@ -6893,6 +6893,40 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
   Object.keys(KESIM).forEach(name=>{
     TPL[name]=(c,W,H,f)=>{[f,mir(f)].forEach(g=>KESIM[name].forEach(p=>tplPoly(c,g,p)));};
   });
+  /* v154: dikiş ve teknik detay şablonları (24) — her biri gerçek konumunda: yan dikiş, etek ucu, bel, yaka, manşet */
+  const dl=(c,g,p,d)=>{c.setLineDash(d||[]);tplPoly(c,g,p);c.setLineDash([]);};
+  const both=(fn)=>(c,W,H,f)=>{[f,mir(f)].forEach(g=>fn(c,W,H,g));};
+  const zz=(c,g,u0,v0,u1,v1,n,a)=>{c.beginPath();for(let i=0;i<=n;i++){const t=i/n,u=u0+(u1-u0)*t,v=v0+(v1-v0)*t,dx=(v1-v0),dy=-(u1-u0),L=Math.hypot(dx,dy)||1,s=(i%2?a:-a);const r=g(u+dx/L*s,v+dy/L*s);if(i)c.lineTo(...r);else c.moveTo(...r);}c.stroke();};
+  const SIDE=[[.39,.3],[.37,.6],[.34,.9]];
+  Object.assign(TPL,{
+    'Düz dikiş':both((c,W,H,g)=>dl(c,g,SIDE,[10,6])),
+    'Çift dikiş':both((c,W,H,g)=>{dl(c,g,SIDE,[10,6]);dl(c,g,SIDE.map(p=>[p[0]+.018,p[1]]),[10,6]);}),
+    'Overlok':both((c,W,H,g)=>{dl(c,g,SIDE);zz(c,g,.39,.3,.37,.6,30,.008);zz(c,g,.37,.6,.34,.9,30,.008);}),
+    'Reçme':(c,W,H,f)=>{dl(c,f,[[.22,.92],[.78,.92]]);dl(c,f,[[.23,.9],[.77,.9]],[8,5]);dl(c,f,[[.24,.88],[.76,.88]],[8,5]);},
+    'Fransız dikişi':both((c,W,H,g)=>{dl(c,g,SIDE);dl(c,g,SIDE.map(p=>[p[0]-.012,p[1]]));dl(c,g,[[.377,.3],[.39,.3]]);dl(c,g,[[.328,.9],[.34,.9]]);}),
+    'Gizli dikiş':(c,W,H,f)=>{dl(c,f,[[.22,.92],[.78,.92]],[2,18]);dl(c,f,[[.3,.14],[.5,.2],[.7,.14]],[2,18]);},
+    'Kapama dikişi':(c,W,H,f)=>{dl(c,f,[[.3,.24],[.7,.24]]);dl(c,f,[[.3,.225],[.7,.225]],[7,4]);dl(c,f,[[.3,.255],[.7,.255]],[7,4]);},
+    'Biye':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.36,.12));c.quadraticCurveTo(...f(.5,.3),...f(.64,.12));c.stroke();c.beginPath();c.moveTo(...f(.34,.12));c.quadraticCurveTo(...f(.5,.34),...f(.66,.12));c.stroke();[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.16));c.quadraticCurveTo(...g(.25,.28),...g(.32,.36));c.stroke();c.beginPath();c.moveTo(...g(.31,.16));c.quadraticCurveTo(...g(.27,.28),...g(.335,.35));c.stroke();});},
+    'Pens':both((c,W,H,g)=>{dl(c,g,[[.39,.5],[.42,.36],[.45,.5]]);dl(c,g,[[.4,.5],[.42,.64],[.44,.5]]);dl(c,g,[[.36,.27],[.42,.34],[.37,.3]]);}),
+    'Nervür':(c,W,H,f)=>{for(let i=0;i<6;i++){const u=.44+i*.024;dl(c,f,[[u,.18],[u,.4]]);dl(c,f,[[u+.008,.18],[u+.008,.4]],[4,3]);}},
+    'Pile':both((c,W,H,g)=>{[.28,.34,.42].forEach(u=>{dl(c,g,[[u,.5],[u-.04,.86]]);dl(c,g,[[u,.5],[u+.03,.53],[u,.56]]);});}),
+    'Drapaj':(c,W,H,f)=>{for(let i=0;i<4;i++){c.beginPath();c.moveTo(...f(.32,.16+i*.05));c.quadraticCurveTo(...f(.46,.32+i*.06),...f(.64,.4+i*.04));c.stroke();}},
+    'Büzgü':(c,W,H,f)=>{dl(c,f,[[.34,.48],[.66,.48]]);for(let u=.34;u<=.661;u+=.016){c.beginPath();c.moveTo(...f(u,.48));c.quadraticCurveTo(...f(u+.006,.51),...f(u,.54));c.stroke();}},
+    'Kapitone':(c,W,H,f)=>{c.save();{const a=f(.34,.26),b=f(.66,.6);c.beginPath();c.rect(a[0],a[1],b[0]-a[0],b[1]-a[1]);c.clip();}c.setLineDash([6,4]);for(let k=-4;k<=4;k++){const a=.5+k*.06;tplPoly(c,f,[[a-.14,.26],[a+.14,.6]]);tplPoly(c,f,[[a+.14,.26],[a-.14,.6]]);}c.setLineDash([]);c.restore();const a=f(.34,.26),b=f(.66,.6);c.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);},
+    'Yama':both((c,W,H,g)=>{const q=g(.11,.48);c.beginPath();c.ellipse(q[0],q[1],.04*W,.055*H,0,0,2*Math.PI);c.stroke();c.setLineDash([4,4]);c.beginPath();c.ellipse(q[0],q[1],.03*W,.044*H,0,0,2*Math.PI);c.stroke();c.setLineDash([]);}),
+    'Astar':both((c,W,H,g)=>dl(c,g,[[.44,.16],[.34,.2],[.35,.5],[.27,.86],[.5,.86]],[12,8])),
+    'Tela':(c,W,H,f)=>{const a=f(.46,.12),b=f(.54,.52);c.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);for(let v=.12;v<.5;v+=.025)dl(c,f,[[.46,v+.025],[.54,v]]);dl(c,f,[[.4,.08],[.6,.08],[.6,.12],[.4,.12],[.4,.08]]);},
+    'Kemer köprüsü':(c,W,H,f)=>{dl(c,f,[[.3,.47],[.7,.47]]);dl(c,f,[[.3,.52],[.7,.52]]);[.33,.42,.58,.67].forEach(u=>{const a=f(u-.008,.455),b=f(u+.008,.535);c.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);});},
+    'Manşet':both((c,W,H,g)=>{const a=g(.04,.6),b=g(.16,.67);c.strokeRect(Math.min(a[0],b[0]),a[1],Math.abs(b[0]-a[0]),b[1]-a[1]);dl(c,g,[[.045,.635],[.155,.635]],[5,4]);const q=g(.135,.645);c.beginPath();c.arc(q[0],q[1],.006*W,0,2*Math.PI);c.fill();}),
+    'Yırtmaç':both((c,W,H,g)=>{dl(c,g,[[.25,.92],[.29,.74]]);dl(c,g,[[.27,.92],[.31,.74]]);dl(c,g,[[.28,.74],[.32,.74]]);dl(c,g,[[.28,.72],[.32,.72]]);}),
+    'Dekoratif dikiş':(c,W,H,f)=>{c.setLineDash([6,4]);c.beginPath();for(let i=0;i<=40;i++){const u=.3+.4*i/40,v=.42+.02*Math.sin(i*Math.PI/4);const r=f(u,v);if(i)c.lineTo(...r);else c.moveTo(...r);}c.stroke();c.setLineDash([]);for(let i=0;i<=8;i++){const u=.3+.05*i;dl(c,f,[[u-.008,.46],[u+.008,.48]]);dl(c,f,[[u+.008,.46],[u-.008,.48]]);}},
+    'Zincir dikiş':(c,W,H,f)=>{for(let u=.24;u<=.76;u+=.024){const q=f(u,.86);c.beginPath();c.ellipse(q[0],q[1],.011*W,.005*H,0,0,2*Math.PI);c.stroke();}},
+    'Baskı dikiş':(c,W,H,f)=>{dl(c,f,[[.47,.2],[.47,.9]]);dl(c,f,[[.53,.2],[.53,.9]]);dl(c,f,[[.48,.2],[.48,.9]],[5,3]);dl(c,f,[[.52,.2],[.52,.9]],[5,3]);},
+    'Kör dikiş':(c,W,H,f)=>{dl(c,f,[[.22,.92],[.78,.92]]);c.beginPath();let first=true;for(let u=.23;u<.77;u+=.04){const p=[f(u,.9),f(u+.03,.9),f(u+.035,.875),f(u+.04,.9)];p.forEach(r=>{if(first){c.moveTo(...r);first=false;}else c.lineTo(...r);});}c.stroke();}
+  });
+  /* v154: katalogdaki 'Patch cep' maddesi (v151'de 'Yama cep' adıyla eşleşmiyordu) — yuvarlak tabanlı, üst kenarı reçmeli */
+  TPL['Patch cep']=(c,W,H,f)=>{const r=.03;c.beginPath();c.moveTo(...f(.56,.62));c.lineTo(...f(.56,.72-r));c.quadraticCurveTo(...f(.56,.72),...f(.56+r,.72));c.lineTo(...f(.7-r,.72));c.quadraticCurveTo(...f(.7,.72),...f(.7,.72-r));c.lineTo(...f(.7,.62));c.closePath();c.stroke();dl(c,f,[[.56,.635],[.7,.635]],[5,4]);};
+  window.TPL_NAMES=()=>Object.keys(TPL);
   window.TPL_OK=(x)=>!!TPL[x];
   window.drawTemplate=function(L,cat,item){
     const doc=D();const fn=TPL[item];if(!doc||!L||!fn||L.isVec)return false;
