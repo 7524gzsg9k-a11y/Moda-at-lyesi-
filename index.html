@@ -1484,7 +1484,10 @@ cv.addEventListener('pointerdown',e=>{
     case'stamp':strokeStart(p.x,p.y,pr,e,'stamp');break;
     case'trim':strokeStart(p.x,p.y,pr,e,'trim');break;
     case'select':selDown(p,e);break;
-    case'fill':{const LVf=doc.layers[doc.active];if(LVf&&LVf.isVec){const i=vecTopAt(LVf,p.x,p.y);if(i>=0){vecPaint(LVf,i);}else toast('Boyamak için bir parçanın içine tıkla.');break;}
+    case'fill':{/* v159: katalog parçasının içini boya — boya çizgileri aşmaz */
+      {let hitL=-1,hitI=-1;for(let li=doc.layers.length-1;li>=0;li--){const Lx=doc.layers[li];if(!Lx.isVec||!Lx.visible||Lx.locked||!Lx.vec)continue;for(let si=Lx.vec.length-1;si>=0;si--){const q=Lx.vec[si];if(q.kind!=='tpl')continue;const b=vecBox(q);if(p.x>=b[0]&&p.x<=b[2]&&p.y>=b[1]&&p.y<=b[3]){hitL=li;hitI=si;break;}}if(hitL>=0)break;}
+        if(hitL>=0){const r=tplPaintAt(doc.layers[hitL],hitI,p.x,p.y);if(r){doc.active=hitL;try{refreshLayers();}catch(_){}break;}}}
+      const LVf=doc.layers[doc.active];if(LVf&&LVf.isVec){const i=vecTopAt(LVf,p.x,p.y);if(i>=0){vecPaint(LVf,i);}else toast('Boyamak için bir parçanın içine tıkla.');break;}
       if(S.fill.live)liveBucket(doc,p.x,p.y);else doFill(p.x,p.y);break;}
     case'pick':pickColor(p.x,p.y,false);ST.picking=true;break;
     case'shape':{const LV=doc.layers[doc.active];
@@ -3888,7 +3891,44 @@ function vecOverlay(g,L){g.save();g.setLineDash([4,3]);g.strokeStyle='#1e88e5';g
   for(const i of VSELS){const s=L.vec[i];if(!s)continue;const[x0,y0,x1,y1]=vecBBox(s);g.strokeRect(x0-2,y0-2,x1-x0+4,y1-y0+4);}
   g.restore();}
 /* v156: katalog parçası (kind 'tpl'): kontrol noktalı yollar; pts ölçeklenince eğriler de doğru ölçeklenir */
-function vecDrawTpl(g,s){const P=s.pts;g.save();g.lineWidth=s.sw||3;g.lineJoin='round';g.lineCap='round';g.strokeStyle=s.stroke||'#222';g.fillStyle=s.stroke||'#222';if(s.alpha!=null)g.globalAlpha=s.alpha;
+/* v159: parça boyama — tohum noktaları kutuya göre (0..1) saklanır; bölge, parçanın kendi çizgileriyle sınırlı taşma doldurma ile her çizimde yeniden bulunur */
+const TPLPAINT=new WeakMap();
+function tplStrokeMask(s,k,x0,y0,w,h){const c=newCanvas(w,h),g=c.getContext('2d');g.setTransform(k,0,0,k,-x0*k,-y0*k);const t=Object.assign({},s,{paint:null,stroke:'#000',alpha:1,sw:Math.max(s.sw||3,2/k)});vecDrawTpl(g,t,true);return c;}
+function tplRegion(lineA,w,h,sx,sy){sx|=0;sy|=0;if(sx<0||sy<0||sx>=w||sy>=h)return null;const N=w*h,m=new Uint8Array(N);const wall=i=>lineA[i*4+3]>40;if(wall(sy*w+sx))return null;
+  const st=[sy*w+sx];m[sy*w+sx]=1;let n=0;while(st.length){const i=st.pop();n++;const x=i%w,y=(i/w)|0;
+    if(x>0&&!m[i-1]&&!wall(i-1)){m[i-1]=1;st.push(i-1);}if(x<w-1&&!m[i+1]&&!wall(i+1)){m[i+1]=1;st.push(i+1);}
+    if(y>0&&!m[i-w]&&!wall(i-w)){m[i-w]=1;st.push(i-w);}if(y<h-1&&!m[i+w]&&!wall(i+w)){m[i+w]=1;st.push(i+w);}}
+  /* 1 px genişlet: çizginin altına girer, boşluk kalmaz; çizgi üstte çizildiği için taşma görünmez */
+  const o=new Uint8Array(m);for(let i=0;i<N;i++)if(m[i]){const x=i%w;if(x>0)o[i-1]=1;if(x<w-1)o[i+1]=1;if(i>=w)o[i-w]=1;if(i<N-w)o[i+w]=1;}return{m:o,n};}
+function tplPaintCanvas(s){const key=JSON.stringify([s.pts,s.paint,s.sw,s.drape,s.gloss]);const c0=TPLPAINT.get(s);if(c0&&c0.key===key)return c0;
+  const b=vecBox(s),pad=4,W0=b[2]-b[0],H0=b[3]-b[1];const k=Math.min(1,700/Math.max(W0,H0,1));const x0=b[0]-pad/k,y0=b[1]-pad/k,w=Math.ceil((W0+2*pad/k)*k),h=Math.ceil((H0+2*pad/k)*k);
+  const lc=tplStrokeMask(s,k,x0,y0,w,h),la=lc.getContext('2d').getImageData(0,0,w,h).data;
+  const pc=newCanvas(w,h),pg=pc.getContext('2d');const masks=[];
+  (s.paint||[]).forEach(sd=>{const R=tplRegion(la,w,h,(b[0]+sd.u*W0-x0)*k,(b[1]+sd.v*H0-y0)*k);masks.push(R);if(!R)return;
+    const mc=newCanvas(w,h),mg=mc.getContext('2d'),id=mg.createImageData(w,h);for(let i=0;i<w*h;i++)if(R.m[i])id.data[i*4+3]=255;mg.putImageData(id,0,0);
+    const tc=newCanvas(w,h),tg=tc.getContext('2d');let fs=sd.col||'#ccc';
+    if(sd.fab){const t=fabCanvasFor(sd.fab);if(t){const pt=tg.createPattern(t,'repeat');if(pt&&pt.setTransform)pt.setTransform(new DOMMatrix().scale(k).translate(-x0,-y0).scale(sd.fab.scale||1).rotate(sd.fab.rot||0));fs=pt||fs;}}
+    tg.fillStyle=fs;tg.fillRect(0,0,w,h);
+    if(s.drape&&s.drape!=='none'&&typeof applyDrape==='function'){try{applyDrape(tg,w,h,s.drape);}catch(e){}}
+    if(s.gloss){const gr=tg.createLinearGradient(0,0,w,h);gr.addColorStop(0,'rgba(255,255,255,0)');gr.addColorStop(.45,'rgba(255,255,255,'+(.45*s.gloss)+')');gr.addColorStop(.55,'rgba(255,255,255,'+(.2*s.gloss)+')');gr.addColorStop(1,'rgba(255,255,255,0)');tg.fillStyle=gr;tg.fillRect(0,0,w,h);}tg.globalCompositeOperation='destination-in';tg.drawImage(mc,0,0);pg.drawImage(tc,0,0);});
+  const out={key,c:pc,x0,y0,k,w,h,masks,la};TPLPAINT.set(s,out);return out;}
+function tplPaintAt(L,i,x,y){const s=L.vec[i];if(!s||s.kind!=='tpl')return false;const b=vecBox(s),W0=b[2]-b[0]||1,H0=b[3]-b[1]||1;
+  const fd=(S.fill&&S.fill.src==='pattern'&&typeof fabDesc==='function')?fabDesc():null;
+  const seed=fd?{u:(x-b[0])/W0,v:(y-b[1])/H0,fab:fd}:{u:(x-b[0])/W0,v:(y-b[1])/H0,col:S.fg};
+  const P=tplPaintCanvas(s);const px=((x-P.x0)*P.k)|0,py=((y-P.y0)*P.k)|0,ix=py*P.w+px;
+  if(px<0||py<0||px>=P.w||py>=P.h)return false;if(P.la[ix*4+3]>40){toast('Çizginin üstüne değil, bölgenin içine dokun.');return true;}
+  const R=tplRegion(P.la,P.w,P.h,px,py);if(!R)return false;
+  /* parçanın dışına (kutu kenarına) taşan bölge: çizgilerle kapalı değil — boyama yapılmaz */
+  for(let xx=0;xx<P.w;xx++){if(R.m[xx]||R.m[(P.h-1)*P.w+xx]){toast('Burası kapalı bir bölge değil; parçanın çizgilerinin içine dokun.');return true;}}
+  for(let yy=0;yy<P.h;yy++){if(R.m[yy*P.w]||R.m[yy*P.w+P.w-1]){toast('Burası kapalı bir bölge değil; parçanın çizgilerinin içine dokun.');return true;}}
+  const old=JSON.stringify(s.paint||[]);let arr=(s.paint||[]).slice();
+  /* aynı bölgedeki eski boyayı değiştir */
+  arr=arr.filter((sd,j)=>{const M=P.masks[j];return !(M&&M.m[ix]);});arr.push(seed);
+  const nw=JSON.stringify(arr);s.paint=arr;vecRender(L);invalidate();
+  structEntry(D(),()=>{s.paint=JSON.parse(old);vecRender(L);invalidate();},()=>{s.paint=JSON.parse(nw);vecRender(L);invalidate();},0);markDirty();
+  toast(fd?'Bölge kumaşla boyandı.':'Bölge boyandı.');return true;}
+function vecDrawTpl(g,s,linesOnly){if(!linesOnly&&s.paint&&s.paint.length){try{const P=tplPaintCanvas(s);g.save();g.imageSmoothingEnabled=true;g.drawImage(P.c,P.x0,P.y0,P.w/P.k,P.h/P.k);g.restore();}catch(e){}}
+  const P=s.pts;g.save();g.lineWidth=s.sw||3;g.lineJoin='round';g.lineCap='round';g.strokeStyle=s.stroke||'#222';g.fillStyle=s.stroke||'#222';if(s.alpha!=null)g.globalAlpha=s.alpha;
   (s.grp||[]).forEach(([o0,o1,m,d])=>{g.beginPath();for(let i=o0;i<o1;i++){const o=s.ops[i],t=o[0];
     if(t==='M')g.moveTo(P[o[1]][0],P[o[1]][1]);else if(t==='L')g.lineTo(P[o[1]][0],P[o[1]][1]);
     else if(t==='Q')g.quadraticCurveTo(P[o[1]][0],P[o[1]][1],P[o[2]][0],P[o[2]][1]);
@@ -6347,7 +6387,7 @@ renderSide=function(){
     const f=(q||'').toLowerCase().trim();const hit=t=>!f||(t||'').toLowerCase().includes(f);
     if(libCat.indexOf('cat:')===0){const c=CATALOG[+libCat.slice(4)];if(!c)return;
       body.append(el('div',{cls:'lib-h',txt:c.n+' ('+c.items.length+')'}));
-      c.items.filter(x=>hit(x)).forEach(x=>body.append(el('button',{cls:'lib-i',type:'button',on:['click',()=>{const d=D();const L=d&&d.layers[d.active];if(!L){toast('Önce bir katman seçin.');return;}const tagSpec=()=>{const L2=D().layers[D().active]||L;L2.props=L2.props||{};L2.props.spec=L2.props.spec||{};L2.props.spec[c.n]=x;markDirty();};const actM=window.catAction?window.catAction(L,c.n,x):null;if(actM){tagSpec();toast(actM);renderSide();return;}const okT=window.drawTemplate?window.drawTemplate(L,c.n,x):false;tagSpec();toast(c.n+': '+x+(okT?' ayrı parça olarak eklendi. Köşe ve kenar noktalarından boyutlandırabilirsin.':' seçildi'+(window.TPL_OK&&!window.TPL_OK(x)?' (çizim şablonu yok)':'')));renderSide();}]},el('span',{txt:x}))));
+      c.items.filter(x=>hit(x)).forEach(x=>body.append(el('button',{cls:'lib-i',type:'button',draggable:'true','data-cat':c.n,'data-item':x,on:['click',()=>{const d=D();const L=d&&d.layers[d.active];if(!L){toast('Önce bir katman seçin.');return;}const tagSpec=()=>{const L2=D().layers[D().active]||L;L2.props=L2.props||{};L2.props.spec=L2.props.spec||{};L2.props.spec[c.n]=x;markDirty();};const actM=window.catAction?window.catAction(L,c.n,x):null;if(actM){tagSpec();toast(actM);renderSide();return;}const okT=window.drawTemplate?window.drawTemplate(L,c.n,x):false;tagSpec();toast(c.n+': '+x+(okT?' ayrı parça olarak eklendi. Köşe ve kenar noktalarından boyutlandır; Boya aracıyla içini boya (çizgileri aşmaz).':' seçildi'+(window.TPL_OK&&!window.TPL_OK(x)?' (çizim şablonu yok)':'')));renderSide();}]},el('span',{txt:x}))));
       return;}
     const sec=(title,items)=>{const key=title.indexOf('Hazır')===0?'models':title==='Süsler'?'trims':'fabrics';if(!f&&key!==libCat)return;const list=items.filter(x=>hit(x.name));if(!list.length)return;
       body.append(el('div',{cls:'lib-h',txt:title+' ('+list.length+')'}));list.forEach(x=>body.append(x.node()));};
@@ -6619,7 +6659,7 @@ renderSide=function(){
     if(/Linen|Muslin|Canvas|Twill|Gabardine|Oxford|Poplin|Cotton|Interlining/.test(n))return{rough:.7,metal:0};
     if(/Knit|Jersey|Rib|Pique|Ponte/.test(n))return{rough:.82,metal:0};
     return{rough:.6,metal:0};}
-  function physOf(doc){for(let i=doc.layers.length-1;i>=0;i--){const L=doc.layers[i];if(L.props&&L.props.phys&&L.visible)return{name:L.props.phys,...physVals(L.props.phys)};}
+  function physOf(doc){for(let i=doc.layers.length-1;i>=0;i--){const L=doc.layers[i];if(L.props&&L.props.phys&&L.visible){const v=physVals(L.props.phys);if(L.props.rough!=null)v.rough=L.props.rough;return{name:L.props.phys,...v};}}
     return{name:'',...physVals('Cotton_Poplin')};}
   window.PHYS=PHYS;window.physVals=physVals;
   /* v158: katalogdan görünüş değişince 3B önizleme de döner */
@@ -7155,6 +7195,106 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
       return figSet({tpl:'cizim',zB:Math.round(r[1]/b0[1]*100),zW:Math.round(r[2]/b0[2]*100),zH:Math.round(r[3]/b0[3]*100),zS:Math.round((100+(r[1]/b0[1]*100))/2)},'Beden '+r[0]+' (göğüs '+r[1]+' · bel '+r[2]+' · kalça '+r[3]+' cm). Tekrar tıkla: sonraki beden');}
     if(item==='Farklı vücut tipleri'){tipI=(tipI+1)%TIPLER.length;const t=TIPLER[tipI];return figSet({tpl:'cizim',zS:t[1],zB:t[2],zW:t[3],zH:t[4]},'Vücut tipi: '+t[0]+' (omuz '+t[1]+' · göğüs '+t[2]+' · bel '+t[3]+' · kalça '+t[4]+' %). Tekrar tıkla: sonraki tip');}
     return null;};
+  /* v159: ek gelişmiş özellikler (30) — her biri katalogdan tek tıkla çalışır */
+  const actL=()=>{const d=D();return d&&d.layers[d.active];};
+  const partShapes=(L)=>L&&L.isVec&&L.vec?L.vec:[];
+  const selCat=(name)=>{const sel=document.querySelector('#lib select');if(!sel)return;const o=[...sel.options].find(o=>o.textContent===name);if(o){sel.value=o.value;sel.dispatchEvent(new Event('change',{bubbles:true}));}};
+  const openTab=(k)=>{S.tab[tabKey()]=k;renderSide();};
+  const recFn=(L,apply,label)=>{const doc=D(),before=JSON.stringify(L.vec);apply();vecRender(L);invalidate();const after=JSON.stringify(L.vec);
+    structEntry(doc,()=>{L.vec=JSON.parse(before);vecRender(L);invalidate();renderSide();},()=>{L.vec=JSON.parse(after);vecRender(L);invalidate();renderSide();},0);markDirty();return label;};
+  const fabsOf=(L)=>{const out=[];partShapes(L).forEach(q=>{if(q.fab)out.push(q.fab);(q.paint||[]).forEach(sd=>{if(sd.fab)out.push(sd.fab);});});return out;};
+  const lastSwatch=()=>{const d=D();for(let i=d.layers.length-1;i>=0;i--){const L=d.layers[i];const q=L.vec&&L.vec[0];if(L.tag==='parca'&&q&&q.kind==='poly'&&q.fab)return q.fab;}return null;};
+  const garmentLayers=()=>D().layers.filter(L=>L.isVec&&L.vec&&L.tag!=='figure'&&(L.vec.some(q=>q.kind==='tpl')||(L.tag!=='parca'&&L.vec.some(q=>q.fill||q.fab))));
+  const applyFabTo=(L,fab)=>{let n=0;partShapes(L).forEach(q=>{if(q.kind==='tpl'){if(q.paint&&q.paint.length){q.paint.forEach(sd=>{sd.fab=JSON.parse(JSON.stringify(fab));delete sd.col;});n++;}}else if(q.fill||q.fab){q.fab=JSON.parse(JSON.stringify(fab));q.fill=null;n++;}});return n;};
+  const SERI=['36','38','40','42','44','46'],SCOL=['#2563eb','#16a34a','#c8102e','#d97706','#7c3aed','#0f766e'];
+  const KOMBIN=[['Gömlek','Pantolon','Kemer','Loafer'],['Elbise','Topuklu ayakkabı','El çantası'],['Blazer','Etek','Stiletto','Clutch'],['Tişört','Jean','Spor ayakkabı','Sırt çantası'],['Trençkot','Tayt','Çizme','Omuz çantası'],['Bluz','Bermuda','Sandalet','Tote çanta']];let kombI=-1;
+  const KCOLS=[['#1c2f63','#d8c3a5','#6b4226'],['#7b1e2b','#111315','#c9a23a'],['#383e42','#e8c4c0','#111315'],['#ffffff','#2e4a7d','#8a8d91'],['#a89268','#111315','#6b4226'],['#b79ad6','#efe3cb','#a0612f']];
+  const rasterLayer=(name,draw)=>{const doc=D();if(doc.layers.length>=maxLayers(doc)){toast('Katman sınırına ulaşıldı.');return null;}const NL=makeLayer(doc,name);NL.tag='pano';draw(NL.ctx,doc.w,doc.h);const idx=doc.layers.length;doc.layers.push(NL);const prev=doc.active;doc.active=idx;
+    structEntry(doc,()=>{doc.layers.splice(doc.layers.indexOf(NL),1);doc.active=Math.min(prev,doc.layers.length-1);refreshLayers();invalidate();},()=>{doc.layers.splice(idx,0,NL);doc.active=idx;refreshLayers();invalidate();},0);refreshLayers();invalidate();markDirty();return NL;};
+  const usedColors=()=>{const set=new Set();D().layers.forEach(L=>partShapes(L).forEach(q=>{if(q.stroke&&q.kind==='tpl')set.add(q.stroke);if(q.fill)set.add(q.fill);(q.paint||[]).forEach(sd=>{if(sd.col)set.add(sd.col);if(sd.fab&&sd.fab.fg)set.add(sd.fab.fg);});if(q.fab&&q.fab.fg)set.add(q.fab.fg);}));if(set.size<3)['#1c2f63','#d8c3a5','#7b1e2b','#efe3cb'].forEach(c=>set.add(c));return[...set].slice(0,10);};
+  let moodImgs=[];
+  const drawMood=(g,W,H)=>{const x0=.04*W,y0=.03*H,w=.92*W,h=.3*H;g.fillStyle='#faf7f2';g.fillRect(x0,y0,w,h);g.strokeStyle='#8a8d91';g.lineWidth=3;g.strokeRect(x0,y0,w,h);
+    g.fillStyle='#22272e';g.font='600 '+(W/28|0)+'px sans-serif';g.fillText('Moodboard',x0+20,y0+W/22);
+    const cols=usedColors();cols.forEach((c,i)=>{g.fillStyle=c;g.fillRect(x0+20+i*(w-40)/10,y0+h-.06*H,(w-40)/10-8,.045*H);g.strokeStyle='#ccc';g.strokeRect(x0+20+i*(w-40)/10,y0+h-.06*H,(w-40)/10-8,.045*H);});
+    const sw=[];D().layers.forEach(L=>{const q=L.vec&&L.vec[0];if(L.tag==='parca'&&q&&q.fab)sw.push(q.fab);});
+    const cells=moodImgs.map(im=>({im})).concat(sw.slice(0,6).map(f=>({f})));const cw=(w-40)/6,ch=h-.06*H-W/22-50;
+    cells.slice(0,6).forEach((c,i)=>{const cx=x0+20+i*cw,cy=y0+W/22+20;if(c.im){const r=Math.min((cw-10)/c.im.width,ch/c.im.height);g.drawImage(c.im,cx,cy,c.im.width*r,c.im.height*r);}else{const t=fabCanvasFor(c.f);if(t){g.fillStyle=g.createPattern(t,'repeat');g.fillRect(cx,cy,cw-10,ch);}}g.strokeStyle='#ccc';g.strokeRect(cx,cy,cw-10,ch);});
+    if(!cells.length){g.fillStyle='#8a8d91';g.font=(W/50|0)+'px sans-serif';g.fillText('Görsel eklemek için dosya seçicisinden resim seç; kumaş parçaları da buraya gelir.',x0+20,y0+h/2);}};
+  const modal=(title,body,btns)=>openModal(title,h('div',{class:'bd'},...body),btns||[h('button',{class:'ibtn pri',onclick:closeModal},'Kapat')]);
+  const SEZON_KEY='moda_sezonlar';const sezonGet=()=>{try{return JSON.parse(localStorage.getItem(SEZON_KEY)||'{}');}catch(e){return{};}};const sezonSet=(o)=>{try{localStorage.setItem(SEZON_KEY,JSON.stringify(o));}catch(e){}};
+  const DIKIS_N=['Düz dikiş','Çift dikiş','Overlok','Reçme','Fransız dikişi','Gizli dikiş','Kapama dikişi','Biye','Pens','Nervür','Pile','Drapaj','Büzgü','Kapitone','Yama','Astar','Tela','Kemer köprüsü','Manşet','Yırtmaç','Dekoratif dikiş','Zincir dikiş','Baskı dikiş','Kör dikiş'];
+  const GEL={
+    'Kumaş dokusu uygulama':()=>{const L=actL(),fd=fabDesc()||lastSwatch();if(fd&&L&&applyFabTo(L,fd))return recFn(L,()=>{},'Kumaş dokusu seçili parçaya uygulandı.');openTab('fabric');return 'Kumaş sekmesi açıldı: bir kumaş seç, sonra parçanın boyalı bölgesine ya da kıyafete uygula.';},
+    'Kumaş desenini kıyafete uygulama':()=>{const fab=lastSwatch()||fabDesc();if(!fab)return 'Önce katalogdan bir kumaş ya da desen parçası ekle; sonra bu özellik onu kıyafete uygular.';let n=0;const ls=garmentLayers();if(!ls.length)return 'Sayfada kıyafet yok. Önce bir kıyafet ekle ve Boya aracıyla içini boya.';
+      ls.forEach(L=>{const before=JSON.stringify(L.vec);const k=applyFabTo(L,fab);if(k){n+=k;vecRender(L);const after=JSON.stringify(L.vec);structEntry(D(),()=>{L.vec=JSON.parse(before);vecRender(L);invalidate();},()=>{L.vec=JSON.parse(after);vecRender(L);invalidate();},0);}});invalidate();markDirty();
+      return n?'Son eklenen kumaş/desen '+n+' kıyafet bölgesine uygulandı.':'Kıyafetlerde boyalı bölge yok: önce Boya aracıyla kıyafetin içine dokun.';},
+    'Kumaş renk değiştirme':()=>{const L=actL();if(!fabsOf(L).length&&!partShapes(L).some(q=>q.paint&&q.paint.length))return 'Seçili parçada kumaş ya da boya yok. Kumaş parçası seç ya da kıyafeti boya.';
+      return recFn(L,()=>{partShapes(L).forEach(q=>{if(q.fab){q.fab.fg=S.fg;if(q.fab.c2)q.fab.c2=S.fg;}(q.paint||[]).forEach(sd=>{if(sd.fab){sd.fab.fg=S.fg;if(sd.fab.c2)sd.fab.c2=S.fg;}else sd.col=S.fg;});});},'Kumaş rengi ön renge ('+S.fg.toUpperCase()+') çevrildi.');},
+    'Desen ölçeğini değiştirme':()=>{const L=actL(),fs=fabsOf(L);if(!fs.length)return 'Seçili parçada desen yok. Önce kumaş/desen parçası ekle ya da kıyafeti kumaşla boya.';const st=[.5,.75,1,1.5,2,3];const cur=fs[0].scale||1;const nx=st[(st.indexOf(cur)+1)%st.length]||1;
+      return recFn(L,()=>{partShapes(L).forEach(q=>{if(q.fab)q.fab.scale=nx;(q.paint||[]).forEach(sd=>{if(sd.fab)sd.fab.scale=nx;});});},'Desen ölçeği: ×'+nx+' (tekrar tıkla: sonraki ölçek)');},
+    'Desen yönünü değiştirme':()=>{const L=actL(),fs=fabsOf(L);if(!fs.length)return 'Seçili parçada desen yok.';const nx=((fs[0].rot||0)+45)%360;
+      return recFn(L,()=>{partShapes(L).forEach(q=>{if(q.fab)q.fab.rot=nx;(q.paint||[]).forEach(sd=>{if(sd.fab)sd.fab.rot=nx;});});},'Desen yönü: '+nx+'° (tekrar tıkla: +45°)');},
+    'Aksesuar sürükle-bırak':()=>{selCat('Aksesuarlar');return 'Aksesuarlar açıldı: bir aksesuarı listeden tutup tuvalde istediğin yere bırak.';},
+    'Ön ve arka tasarım görünümü':()=>{const back=Math.abs(S.fig.yaw||0)<90;const m=window._MANKEN_ACT(null,back?'Arka görünüş':'Ön görünüş');return (back?'Arka':'Ön')+' görünüm. Tekrar tıkla: '+(back?'ön':'arka')+'. '+(m?'':'');},
+    'Yan görünüş tasarımı':()=>window._MANKEN_ACT(null,'Yan görünüş'),
+    'Katman sistemi':()=>{openTab('layers');return 'Katman paneli açıldı: her parça kendi katmanında; göster/gizle, kilitle, sırala.';},
+    'Şeffaflık ayarı':()=>{const L=actL();if(!L)return null;const st=[1,.75,.5,.25];const old=L.opacity;const nx=st[(st.indexOf(st.reduce((a,b)=>Math.abs(b-old)<Math.abs(a-old)?b:a))+1)%st.length];L.opacity=nx;invalidate();refreshLayers();
+      structEntry(D(),()=>{L.opacity=old;invalidate();refreshLayers();},()=>{L.opacity=nx;invalidate();refreshLayers();},0);markDirty();return L.name+' şeffaflığı: %'+Math.round(nx*100)+' (tekrar tıkla: sonraki)';},
+    'Kumaş parlaklık ayarı':()=>{const L=actL();if(!L)return null;const st=[0,.35,.7,1];const q=partShapes(L).find(q=>q.kind==='tpl');const cur=q?q.gloss||0:((L.props&&L.props.rough!=null)?1-L.props.rough:0);const nx=st[(st.indexOf(st.reduce((a,b)=>Math.abs(b-cur)<Math.abs(a-cur)?b:a))+1)%st.length];
+      L.props=L.props||{};L.props.rough=+(1-nx*.7).toFixed(2);return recFn(L,()=>{partShapes(L).forEach(q=>{if(q.kind==='tpl')q.gloss=nx;});},'Parlaklık: '+['mat','hafif','parlak','çok parlak'][st.indexOf(nx)]+' (3B pürüzlülük '+L.props.rough+')');},
+    'Kumaş kalınlık ayarı':()=>{const L=actL();if(!L)return null;L.props=L.props||{};const st=[['ince',.7],['orta',1],['kalın',1.6],['çok kalın',2.3]];const cur=L.props.kalinlik||'orta';const i=(st.findIndex(x=>x[0]===cur)+1)%st.length;const k=st[i][1]/(st.find(x=>x[0]===cur)||st[1])[1];L.props.kalinlik=st[i][0];
+      return recFn(L,()=>{partShapes(L).forEach(q=>{if(q.kind==='tpl'||q.stroke)q.sw=Math.max(1,(q.sw||3)*k);});},'Kumaş kalınlığı: '+st[i][0]+' (çizgi ağırlığı ve teknik föy kaydı)');},
+    'Kumaş döküm ayarı':()=>{const L=actL();const st=['none','soft','pleat','diag'],nm={none:'Düz',soft:'Yumuşak kıvrım',pleat:'Pileli',diag:'Çapraz drape'};const q=partShapes(L).find(q=>q.kind==='tpl');const cur=q?(q.drape||'none'):(S.fill.drape||'none');const nx=st[(st.indexOf(cur)+1)%st.length];S.fill.drape=nx;
+      if(q)return recFn(L,()=>{partShapes(L).forEach(q=>{if(q.kind==='tpl')q.drape=nx;});},'Döküm: '+nm[nx]+(q.paint&&q.paint.length?'':' (boyanan bölgelerde görünür)'));return 'Döküm: '+nm[nx]+' (Boya aracının kumaş dolgusunda kullanılır)';},
+    'Dikiş rengi değiştirme':()=>{const d=D();let n=0;d.layers.forEach(L=>{const sp=L.props&&L.props.spec;if(L.tag==='parca'&&((sp&&sp['Dikiş ve Teknik Detaylar'])||DIKIS_N.includes(L.name))){const before=JSON.stringify(L.vec);L.vec.forEach(q=>{if(q.kind==='tpl'){q.stroke=S.fg;n++;}});vecRender(L);const after=JSON.stringify(L.vec);structEntry(d,()=>{L.vec=JSON.parse(before);vecRender(L);invalidate();},()=>{L.vec=JSON.parse(after);vecRender(L);invalidate();},0);}});invalidate();
+      return n?n+' dikiş parçası ön renge ('+S.fg.toUpperCase()+') boyandı.':'Sayfada dikiş parçası yok: önce "Dikiş ve Teknik Detaylar" kategorisinden dikiş ekle.';},
+    'Yaka ve kol değiştirme':()=>{selCat('Yaka Modelleri');return 'Yaka Modelleri açıldı; kol için listeden "Kol Modelleri"ni seç. Eski yaka/kol parçasını seçip Sil ile kaldırabilirsin.';},
+    'Kıyafet kesimini değiştirme':()=>{selCat('Etek ve Elbise Kesimleri');return 'Kesimler açıldı: bir kesime tıkla, ayrı parça olarak eklenir.';},
+    'Teknik çizim oluşturma':()=>{addFlat(false);return 'Ön teknik çizim eklendi.';},
+    'Moodboard oluşturma':()=>{const NL=rasterLayer('Moodboard',drawMood);if(!NL)return null;const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
+      inp.onchange=async()=>{const fs=[...inp.files].slice(0,6);for(const f of fs){try{const im=await createImageBitmap(f);moodImgs.push(im);}catch(e){}}moodImgs=moodImgs.slice(-6);NL.ctx.clearRect(0,0,NL.canvas.width,NL.canvas.height);drawMood(NL.ctx,NL.canvas.width,NL.canvas.height);invalidate();markDirty();toast(fs.length+' görsel moodboarda eklendi.');};
+      try{inp.click();}catch(e){}return 'Moodboard eklendi (renkler ve kumaş parçaları). Açılan pencereden görsel seçebilirsin.';},
+    'Koleksiyon oluşturma':()=>{createDesign('koleksiyon','mid','Koleksiyon');return 'Koleksiyon sayfası açıldı (3 manken yan yana).';},
+    'Teknik föy oluşturma':()=>{openTechSheet();return 'Teknik föy açıldı.';},
+    'Ölçü tablosu oluşturma':()=>{const T=BEDEN_TABLO.kadin;const NL=rasterLayer('Ölçü tablosu',(g,W,H)=>{const x0=.55*W,y0=.72*H,cw=.065*W,rh=.022*H;g.fillStyle='#fff';g.fillRect(x0,y0,cw*4+20,rh*(T.length+1)+20);g.strokeStyle='#55595f';g.lineWidth=2;
+        g.font='600 '+(rh*.55|0)+'px sans-serif';g.fillStyle='#22272e';['Beden','Göğüs','Bel','Kalça'].forEach((t,i)=>g.fillText(t,x0+10+i*cw,y0+10+rh*.7));g.font=(rh*.55|0)+'px sans-serif';
+        T.forEach((r,j)=>{r.forEach((v,i)=>g.fillText(String(v),x0+10+i*cw,y0+10+rh*(j+1.7)));});for(let j=0;j<=T.length+1;j++){g.beginPath();g.moveTo(x0+10,y0+10+rh*j);g.lineTo(x0+10+cw*4,y0+10+rh*j);g.stroke();}for(let i=0;i<=4;i++){g.beginPath();g.moveTo(x0+10+i*cw,y0+10);g.lineTo(x0+10+i*cw,y0+10+rh*(T.length+1));g.stroke();}});
+      return NL?'Ölçü tablosu (kadın, cm) sayfaya eklendi.':null;},
+    'Kalıp tasarımı':()=>{openTab('tool');return 'Kalıp araçları açıldı: bir parça seç; dikiş payı, ip yönü ve çentik ekle, kalıp olarak kaydet.';},
+    'Beden serileme':()=>{const L=actL();const q=partShapes(L).find(q=>q.kind==='tpl'||q.kind==='poly');if(!q)return 'Önce serilenecek bir parça (ör. kıyafet) seç.';const doc=D();const b=vecBox(q),cx=(b[0]+b[2])/2,cy=b[1];const T=BEDEN_TABLO.kadin,base=T[1];
+      const shapes=T.map((r,i)=>{const kx=r[1]/base[1],ky=1+(i-1)*.012;const c=JSON.parse(JSON.stringify(q));delete c.paint;delete c.fab;c.fill=null;c.kind='tpl'===q.kind?'tpl':'poly';c.stroke=SCOL[i];c.name=(L.name||'Parça')+' '+r[0];c.pts=c.pts.map(p=>[cx+(p[0]-cx)*kx,cy+(p[1]-cy)*ky]);if(c.kind==='poly')c.ln={dash:[3,2]};return c;});
+      const NL=makeLayer(doc,'Beden serisi: '+(L.name||'parça'));NL.isVec=true;NL.vec=shapes;NL.tag='parca';vecRender(NL);const idx=doc.active+1,prev=doc.active;doc.layers.splice(idx,0,NL);doc.active=idx;
+      structEntry(doc,()=>{doc.layers.splice(doc.layers.indexOf(NL),1);doc.active=Math.min(prev,doc.layers.length-1);refreshLayers();invalidate();},()=>{doc.layers.splice(idx,0,NL);doc.active=idx;refreshLayers();invalidate();},0);VSEL=-1;VSELS=[];refreshLayers();invalidate();markDirty();
+      return 'Beden serisi: '+T.map(r=>r[0]).join(', ')+' (renkli iç içe çizgiler, 38 temel). Her beden ayrı seçilip düzenlenebilir.';},
+    '3D kıyafet simülasyonu':()=>{setView3('3d');return '3B önizleme açıldı: sürükleyerek döndür, çift tıkla: sıfırla.';},
+    'Tasarımı PNG / JPG / PDF dışa aktarma':()=>{openExport();return 'Dışa aktarma açıldı (PNG, JPG, PDF).';},
+    'Tasarım kaydetme ve kopyalama':()=>{(async()=>{await saveNow(false);try{const all=await IDB.all('projects');const r=all.find(x=>P&&x.id===P.id);if(r){const c=Object.assign({},r,{id:'pr'+uid(),name:r.name+' kopya',updated:Date.now(),created:Date.now()});await IDB.put('projects',c);toast('Kaydedildi ve "'+c.name+'" kopyası oluşturuldu (Projelerim).');}}catch(e){toast('Kaydedildi; kopya oluşturulamadı.');}})();return 'Kaydediliyor…';},
+    'Hazır kombin oluşturma':()=>{kombI=(kombI+1)%KOMBIN.length;const set=KOMBIN[kombI],pal=KCOLS[kombI],doc=D();let n=0;set.forEach((it,i)=>{const sh2=tplShape(it,doc.w,doc.h,pal[i%pal.length]);if(sh2&&placeShape(sh2,'Kombin: '+it)){n++;const L=actL();L.props=L.props||{};L.props.spec={'Hazır kombin':set.join(' + ')};}});
+      return n?'Kombin '+(kombI+1)+'/'+KOMBIN.length+': '+set.join(' + ')+'. Tekrar tıkla: sonraki kombin.':null;},
+    'Sürükle-bırak tasarım sistemi':()=>'Katalogdaki her maddeyi tutup tuvalde istediğin yere bırakabilirsin; tıklarsan varsayılan yerine eklenir.',
+    'Sezonluk koleksiyon yönetimi':()=>{(async()=>{await saveNow(false);const all=(await IDB.all('projects')).sort((a,b)=>b.updated-a.updated);const sz=sezonGet();const cur=P&&P.id;
+      const inp=h('input',{type:'text',value:(cur&&sz[cur])||'',placeholder:'Örn. İlkbahar/Yaz 2027',style:'width:100%;font-size:15px'});
+      const grp={};all.forEach(r=>{const k=sz[r.id]||'Sezonsuz';(grp[k]=grp[k]||[]).push(r);});
+      const list=h('div',null,...Object.keys(grp).sort().map(k=>h('div',{style:'margin:8px 0'},h('b',null,k+' ('+grp[k].length+')'),...grp[k].map(r=>h('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;margin:3px 0'},h('span',null,r.name),h('button',{class:'ibtn',style:'min-height:28px',onclick:()=>{closeModal();loadProject(r.id);}},'Aç'))))));
+      modal('Sezonluk koleksiyon yönetimi',[h('div',{class:'note'},'Bu tasarımın sezonu'),inp,h('div',{class:'note',style:'margin-top:10px'},'Sezonlara göre projeler'),list],[h('button',{class:'ibtn',onclick:closeModal},'Kapat'),h('button',{class:'ibtn pri',onclick:()=>{if(cur){const o=sezonGet();o[cur]=inp.value.trim();sezonSet(o);}closeModal();toast('Sezon kaydedildi: '+(inp.value.trim()||'—'));}},'Kaydet')]);})();return 'Sezon yönetimi açılıyor…';},
+    'Ürün maliyet hesaplama':()=>{const d=D();const sp=d.layers.map(L=>L.props&&L.props.spec||{});const nGar=sp.filter(x=>x['Kıyafet Türleri']||x['Hazır kombin']).length||1,nAks=sp.filter(x=>x['Aksesuarlar']).length;
+      const f={m:+(nGar*1.6).toFixed(1),p:180,a:nAks,ap:15,i:350,g:15,k:40};const out=h('div',{style:'font-size:15px;margin-top:10px;line-height:1.6'});
+      const calc=()=>{const kum=f.m*f.p,aks=f.a*f.ap,ara=kum+aks+f.i,gen=ara*f.g/100,mal=ara+gen,sat=mal*(1+f.k/100);const t=x=>x.toLocaleString('tr-TR',{maximumFractionDigits:2})+' ₺';
+        out.innerHTML='';out.append(h('div',null,'Kumaş: '+t(kum)),h('div',null,'Aksesuar: '+t(aks)),h('div',null,'İşçilik: '+t(f.i)),h('div',null,'Genel gider: '+t(gen)),h('div',{style:'font-weight:700'},'Birim maliyet: '+t(mal)),h('div',{style:'font-weight:700;color:var(--accent)'},'Önerilen satış fiyatı: '+t(sat)));out.dataset.txt='Birim maliyet '+t(mal)+' · Satış '+t(sat);};
+      const row=(lab,k,step)=>h('div',{class:'row'},h('label',null,lab),h('input',{type:'number',value:String(f[k]),step:String(step||1),min:'0',style:'width:110px',oninput:e=>{f[k]=+e.target.value||0;calc();}}));
+      calc();modal('Ürün maliyet hesaplama',[h('div',{class:'note'},'Sayfadaki parçalardan dolduruldu: '+nGar+' kıyafet, '+nAks+' aksesuar. Değerleri değiştirebilirsin.'),row('Kumaş (metre)','m',.1),row('Kumaş fiyatı (₺/m)','p'),row('Aksesuar adedi','a'),row('Aksesuar fiyatı (₺/adet)','ap'),row('İşçilik (₺)','i'),row('Genel gider (%)','g'),row('Kâr marjı (%)','k'),out],
+        [h('button',{class:'ibtn',onclick:()=>{try{navigator.clipboard.writeText(out.dataset.txt);toast('Kopyalandı.');}catch(e){}}},'Kopyala'),h('button',{class:'ibtn pri',onclick:closeModal},'Kapat')]);return 'Maliyet hesaplayıcı açıldı.';}
+  };
+  window.GEL_NAMES=()=>Object.keys(GEL);
+  window._GEL_ACT=(L,item)=>{const fn=GEL[item];if(!fn)return null;return fn(L);};
+  /* sürükle-bırak: katalog maddesini tuvale bırak → bırakılan noktaya yerleşir */
+  document.addEventListener('dragstart',e=>{const b=e.target&&e.target.closest&&e.target.closest('.lib-i[data-item]');if(!b)return;e.dataTransfer.setData('text/plain',b.getAttribute('data-item'));e.dataTransfer.effectAllowed='copy';window._DRAGBTN=b;});
+  const wrap=document.getElementById('cvwrap')||document.getElementById('cv');
+  if(wrap){wrap.addEventListener('dragover',e=>{if(window._DRAGBTN){e.preventDefault();e.dataTransfer.dropEffect='copy';}});
+    wrap.addEventListener('drop',e=>{const b=window._DRAGBTN;window._DRAGBTN=null;if(!b)return;e.preventDefault();const d=D(),n0=d.layers.length,p=hoverXY(e);b.click();const L=d.layers[d.active];
+      if(d.layers.length>n0&&L&&L.isVec&&L.vec&&L.vec.length){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;L.vec.forEach(q=>{const bb=vecBox(q);x0=Math.min(x0,bb[0]);y0=Math.min(y0,bb[1]);x1=Math.max(x1,bb[2]);y1=Math.max(y1,bb[3]);});
+        const dx=p.x-(x0+x1)/2,dy=p.y-(y0+y1)/2;L.vec.forEach(q=>vecMoveShape(q,dx,dy));vecRender(L);invalidate();markDirty();}});}
+  document.addEventListener('dragend',()=>{setTimeout(()=>{window._DRAGBTN=null;},0);});
   /* v155: renk seçenekleri (30) — adlar karteladaki eşleşen tona, yoksa standart tona bağlanır; tıklayınca ön renk olur, seçili canlı kıyafet varsa onu da boyar */
   const RENK={'Beyaz':'#ffffff','Siyah':'#111315','Kırmızı':'#c8102e','Bordo':'#7b1e2b','Lacivert':'#1c2f63','Mavi':'#2c5fbf','Açık mavi':'#8ec3ea','Turkuaz':'#30b5b0','Yeşil':'#2e8b3e','Zümrüt yeşili':'#087a50','Haki':'#6b6b3a','Sarı':'#f2c919','Hardal':'#c99a1c','Turuncu':'#ef7a1a','Pembe':'#f2a1b7','Pudra':'#e8c4c0','Fuşya':'#d0257a','Mor':'#6a2c8e','Lila':'#b79ad6','Lavanta':'#c8b6e2','Bej':'#d8c3a5','Krem':'#f3e9d2','Kahverengi':'#6b4226','Taba':'#a0612f','Gri':'#8a8d91','Antrasit':'#383e42','Gümüş':'#c0c3c7','Altın':'#c9a23a','Bronz':'#a0703a','Bakır':'#b8734a'};
   const renkHex=(n)=>{try{for(const k of (typeof KARTELA!=='undefined'?KARTELA:[]))for(const e of (k.c||[]))if(e[0]===n)return e[1];}catch(e){}return RENK[n]||null;};
@@ -7183,6 +7323,7 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
   ACT['Kumaş Çeşitleri']=(L,item)=>window._KUMAS_ACT(L,item);
   ACT['Kumaş Desenleri']=(L,item)=>window._DESEN_ACT(L,item);
   ACT['Manken Çeşitleri']=(L,item)=>window._MANKEN_ACT(L,item);
+  ACT['Ek Gelişmiş Özellikler']=(L,item)=>window._GEL_ACT(L,item);
   window.CAT_ACT=ACT;
   window.catAction=(L,cat,item)=>{const fn=ACT[cat];if(!fn)return null;try{return fn(L,item);}catch(e){return null;}};
   window.TPL_NAMES=()=>Object.keys(TPL);
