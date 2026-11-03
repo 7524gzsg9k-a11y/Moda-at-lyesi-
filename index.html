@@ -6422,7 +6422,7 @@ renderSide=function(){
     const arm=(o,side,z,x)=>{o.rotation.set(x||0,0,side*z);};
     if(name==='A'){const ang=V.glb?0:.5;arm(P.armL,1,ang);arm(P.armR,-1,ang);}
     else if(name==='rahat'){arm(P.armL,1,.15);arm(P.armR,-1,.15);}
-    else if(name==='bel'){arm(P.armL,1,.25);arm(P.armR,-1,.45);P.armR.rotation.x=.3;}
+    else if(name==='bel'){if(V.glb){arm(P.armL,1,.1);arm(P.armR,-1,.2);P.armR.rotation.x=.45;}else{arm(P.armL,1,.25);arm(P.armR,-1,.45);P.armR.rotation.x=.3;}}
     P.legL.rotation.set(0,0,0);P.legR.rotation.set(0,0,0);
     if(name==='bel'){P.legR.rotation.z=-.05;P.legL.rotation.z=.04;}
     v3Draw();
