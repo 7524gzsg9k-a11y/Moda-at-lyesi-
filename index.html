@@ -6843,6 +6843,25 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
     'Fleto cep':(c,W,H,f)=>{const a=f(.3,.45),b=f(.46,.57);c.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);c.beginPath();c.moveTo(...f(.3,.48));c.lineTo(...f(.46,.48));c.stroke();},
     'Arka cep':(c,W,H,f)=>{const a=f(.3,.66),b=f(.46,.76);c.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);const i=.012*W;c.setLineDash([3,3]);c.strokeRect(a[0]+i,a[1]+i,b[0]-a[0]-2*i,b[1]-a[1]-2*i);c.setLineDash([]);}
   });
+  Object.assign(TPL,{
+    'Kolsuz':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.18));c.quadraticCurveTo(...g(.22,.3),...g(.3,.42));c.stroke();});},
+    'Volanlı kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.18));c.lineTo(...g(.12,.3));c.lineTo(...g(.2,.44));c.lineTo(...g(.3,.32));c.closePath();c.stroke();c.beginPath();c.moveTo(...g(.14,.34));c.quadraticCurveTo(...g(.18,.38),...g(.14,.42));c.stroke();c.beginPath();c.moveTo(...g(.18,.36));c.quadraticCurveTo(...g(.22,.4),...g(.18,.44));c.stroke();});},
+    'İspanyol kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.18));c.lineTo(...g(.1,.3));c.lineTo(...g(.04,.5));c.lineTo(...g(.2,.5));c.lineTo(...g(.3,.32));c.closePath();c.stroke();});},
+    'Yarasa kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.18));c.lineTo(...g(.05,.5));c.lineTo(...g(.2,.56));c.lineTo(...g(.3,.34));c.closePath();c.stroke();});},
+    'Reglan kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.36,.12));c.lineTo(...g(.1,.42));c.lineTo(...g(.2,.46));c.stroke();});},
+    'Düşük omuz kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.22));c.lineTo(...g(.12,.34));c.lineTo(...g(.2,.46));c.lineTo(...g(.3,.36));c.closePath();c.stroke();});},
+    'Puf kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{const q=g(.2,.3);c.beginPath();c.ellipse(q[0],q[1],.08*W,.12*H,0,0,2*Math.PI);c.stroke();c.beginPath();c.moveTo(...g(.14,.38));c.lineTo(...g(.26,.38));c.stroke();});},
+    'Fener kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{const q=g(.2,.36);c.beginPath();c.ellipse(q[0],q[1],.12*W,.15*H,0,0,2*Math.PI);c.stroke();c.beginPath();c.moveTo(...g(.12,.3));c.lineTo(...g(.28,.3));c.stroke();});},
+    'Çan kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.18));c.lineTo(...g(.12,.3));c.lineTo(...g(.04,.52));c.lineTo(...g(.22,.52));c.lineTo(...g(.3,.32));c.closePath();c.stroke();});},
+    'Manşetli kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.18));c.lineTo(...g(.1,.3));c.lineTo(...g(.06,.62));c.lineTo(...g(.14,.62));c.lineTo(...g(.2,.34));c.lineTo(...g(.3,.3));c.closePath();c.stroke();const a=g(.05,.58),b=g(.15,.64);c.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);});},
+    'Yırtmaçlı kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.18));c.lineTo(...g(.1,.3));c.lineTo(...g(.06,.62));c.lineTo(...g(.14,.62));c.lineTo(...g(.2,.34));c.lineTo(...g(.3,.3));c.closePath();c.stroke();c.beginPath();c.moveTo(...g(.1,.62));c.lineTo(...g(.12,.5));c.stroke();});},
+    'Tek omuz kol':(c,W,H,f)=>{c.beginPath();c.moveTo(...f(.3,.18));c.lineTo(...f(.1,.3));c.lineTo(...f(.2,.46));c.lineTo(...f(.3,.32));c.closePath();c.stroke();},
+    'Transparan kol':(c,W,H,f)=>{c.setLineDash([6,6]);[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.18));c.lineTo(...g(.1,.3));c.lineTo(...g(.06,.62));c.lineTo(...g(.14,.62));c.lineTo(...g(.2,.34));c.lineTo(...g(.3,.3));c.closePath();c.stroke();});c.setLineDash([]);},
+    'Bishop kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{const q=g(.2,.3);c.beginPath();c.ellipse(q[0],q[1],.09*W,.11*H,0,0,2*Math.PI);c.stroke();const a=g(.13,.42),b=g(.27,.46);c.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);});},
+    'Kimono kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.36,.12));c.lineTo(...g(.06,.26));c.lineTo(...g(.02,.5));c.lineTo(...g(.3,.5));c.lineTo(...g(.36,.3));c.closePath();c.stroke();});},
+    'Dolman kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.36,.12));c.lineTo(...g(.04,.36));c.lineTo(...g(.08,.46));c.lineTo(...g(.36,.3));c.closePath();c.stroke();});},
+    'Kap kol':(c,W,H,f)=>{[f,mir(f)].forEach(g=>{c.beginPath();c.moveTo(...g(.3,.16));c.lineTo(...g(.18,.2));c.lineTo(...g(.2,.32));c.lineTo(...g(.3,.28));c.closePath();c.stroke();});}
+  });
   window.TPL_OK=(x)=>!!TPL[x];
   window.drawTemplate=function(L,cat,item){
     const doc=D();const fn=TPL[item];if(!doc||!L||!fn||L.isVec)return false;
