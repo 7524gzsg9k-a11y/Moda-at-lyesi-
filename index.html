@@ -3157,10 +3157,18 @@ const FABRICS=[
 ];
 const FAB_CATS=['Doğal','Dokuma','Parlak','Yüzeyli','Örgü','Transparan','Süslü','Biçimli','Desen','Hayvan','Deniz','Gece'];
 const FABCACHE={};
+/* v167: kenarları uyuşmayan kumaş kalıbı aynalanarak dikişsiz yapılır (uyuşanlar olduğu gibi kalır) */
+let _seamC=null;function seamlessTile(t){const w=t.width,h=t.height;if(!w||!h)return t;if(!_seamC){_seamC=document.createElement('canvas');}_seamC.width=w;_seamC.height=h;const g=_seamC.getContext('2d',{willReadFrequently:true});g.clearRect(0,0,w,h);g.drawImage(t,0,0);const L=g.getImageData(0,0,1,h).data,R=g.getImageData(w-1,0,1,h).data,T=g.getImageData(0,0,w,1).data,B=g.getImageData(0,h-1,w,1).data;
+  const diff=(a,b)=>{let d=0;for(let i=0;i<a.length;i+=4)d+=Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2]);return d/(a.length/4)/3;};
+  const dx=diff(L,R),dy=diff(T,B);if(dx<10&&dy<10)return t;
+  const c=newCanvas(dx>=10?w*2:w,dy>=10?h*2:h),x=c.getContext('2d');x.drawImage(t,0,0);
+  if(dx>=10){x.save();x.translate(w*2,0);x.scale(-1,1);x.drawImage(t,0,0);x.restore();}
+  if(dy>=10){x.save();x.translate(0,h*2);x.scale(1,-1);x.drawImage(c,0,0,c.width,h,0,0,c.width,h);x.restore();}
+  return c;}
 function makeFabricTile(id,col,s){
   const key=id+col+(S.bg||'')+(s||256);if(FABCACHE[key])return FABCACHE[key];
   const f=FABRICS.find(q=>q.id===id);if(!f)return null;
-  const t=f.gen(s||256,col);const ks=Object.keys(FABCACHE);if(ks.length>40)delete FABCACHE[ks[0]];FABCACHE[key]=t;return t;
+  let t=f.gen(s||256,col);try{t=seamlessTile(t);}catch(e){}const ks=Object.keys(FABCACHE);if(ks.length>40)delete FABCACHE[ks[0]];FABCACHE[key]=t;return t;
 }
 /* dolgu için "döküm" gölgeleri */
 function applyDrape(g,bw,bh,kind){
@@ -6720,7 +6728,7 @@ renderSide=function(){
   const partAt=(p)=>{const d=D();for(let i=d.layers.length-1;i>=0;i--){const L=d.layers[i];if(L.tag!=='parca'||!L.visible||L.locked||!L.vec||!L.vec.length)continue;if(L.vec.every(q=>q.kind==='poly'&&q.fab))continue;if(L.vec.some(q=>/çocuk manken/.test(q.name||'')))continue;
       const b=layerBox(L);if(p.x>=b[0]&&p.x<=b[2]&&p.y>=b[1]&&p.y<=b[3])return L;}return null;};
   /* sürüklerken yalnız doku güncellenir (hızlı); bırakınca tam 3B yenilenir */
-  const v3TexFast=()=>{if(v3P.raf)return;v3P.raf=requestAnimationFrame(()=>{v3P.raf=0;try{const m=V3.garment[0];if(!m)return;const cv2=v3GarmentCanvas(D());m.material.map.image=cv2;m.material.map.needsUpdate=true;v3Draw();}catch(e){}});};
+  const v3TexFast=()=>{if(v3P.raf)return;v3P.raf=requestAnimationFrame(()=>{v3P.raf=0;try{const m=V3.garment[0];if(!m)return;let cv2=v3GarmentCanvas(D());try{cv2=v3ArmWarp(cv2,D());}catch(e){}m.material.map.image=cv2;m.material.map.needsUpdate=true;v3Draw();}catch(e){}});};
   let hdBox=null;const HN=['nw','n','ne','e','se','s','sw','w'];
   const ensureHd=()=>{if(hdBox||!V3)return;hdBox=document.createElement('div');hdBox.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:4';V3.host.append(hdBox);
     HN.forEach(n=>{const k=document.createElement('div');k.dataset.h=n;k.title='Boyutlandır';k.style.cssText='position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;background:#fff;border:2px solid #2563eb;border-radius:3px;pointer-events:auto;touch-action:none;cursor:'+(n.length===2?(n==='nw'||n==='se'?'nwse':'nesw'):(n==='n'||n==='s'?'ns':'ew'))+'-resize';
@@ -6765,12 +6773,24 @@ renderSide=function(){
     if(y<=P[0][0])return .15;if(y>=P[P.length-1][0])return P[P.length-1][1];
     for(let i=1;i<P.length;i++)if(y<=P[i][0]){const t=(y-P[i-1][0])/(P[i][0]-P[i-1][0]);return P[i-1][1]+(P[i][1]-P[i-1][1])*t;}
     return .15;}
+  /* v167: 3B kol hattı — omuz (±.2, 1.36), poz açısıyla dışa doğru */
+  function v3ArmX(y){let a=.12;try{const sh=V3&&V3.parts&&V3.parts.armL;if(sh)a=Math.abs(sh.rotation.z)||a;}catch(e){}return .2+Math.max(0,1.36-y)*Math.tan(Math.min(.6,a));}
+  /* kıyafet dokusunu kol bandında 3B kollara doğru topla (gövde aynı kalır): böylece kollar kesilmez, mankenin kolunda görünür */
+  function v3ArmWarp(src,doc){const w=src.width,h=src.height,Wd=1.8*doc.w/doc.h,cx=w/2;const out=newCanvas(w,h),g=out.getContext('2d');
+    const yOf=(py)=>.9+(.5-py/h)*1.8;
+    for(let py=0;py<h;py++){const y=yOf(py);let f=0;if(y<=1.44&&y>=.62){f=1;if(y>1.36)f=(1.44-y)/.08;if(y<.72)f=(y-.62)/.1;}
+      if(f<=0){g.drawImage(src,0,py,w,1,0,py,w,1);continue;}
+      const tw=(y>1.5?.1:(y<.9?.2:v3BodyR(y))+.03),ao=v3ArmX(y)+.075;const twp=tw/Wd*w,aop=Math.max(twp+2,ao/Wd*w),edge=cx;
+      const tgt=edge+(aop-edge)*f;/* hedef dış kenar (px, merkezden) */
+      g.drawImage(src,cx-twp,py,2*twp,1,cx-twp,py,2*twp,1);
+      if(edge-twp>1&&tgt-twp>.5){g.drawImage(src,0,py,edge-twp,1,cx-tgt,py,tgt-twp,1);g.drawImage(src,cx+twp,py,edge-twp,1,cx+twp,py,tgt-twp,1);}}
+    if(src._attr)out._attr=v3ArmWarp(src._attr,doc);return out;}
   function v3Drape(geo,W,H,zOff){
     const p=geo.attributes.position,n=p.count,g=32,N=g+1;
     const X=new Float64Array(n),Y=new Float64Array(n),Z=new Float64Array(n);
     for(let i=0;i<n;i++){X[i]=p.getX(i);Y[i]=p.getY(i)+.9;Z[i]=p.getZ(i)+zOff;}
     /* vücuda oturtma: panel genişliği gövde silüetini aşmaz (yan kenarlar bedene göre kesilir) */
-    for(let i=0;i<n;i++){const y=Y[i];if(y<.02)continue;const hw=y>1.5?.1:(y<.9?.2:v3BodyR(y))+.03;const ax=Math.abs(X[i]);if(ax>hw)X[i]=Math.sign(X[i])*hw;}
+    for(let i=0;i<n;i++){const y=Y[i];if(y<.02)continue;const hw=y>1.5?.13:(y>=.62&&y<=1.44?Math.max(v3ArmX(y)+.11,(y<.9?.2:v3BodyR(y))+.03):(y<.62?.6:v3BodyR(y)+.06));const ax=Math.abs(X[i]);if(ax>hw)X[i]=Math.sign(X[i])*hw;}
     const L=(a,b)=>Math.hypot(X[a]-X[b],Y[a]-Y[b],Z[a]-Z[b]);const E=[];
     for(let iy=0;iy<N;iy++)for(let ix=0;ix<N;ix++){const i=iy*N+ix;
       if(ix<g){E.push([i,i+1,L(i,i+1)]);}
@@ -6779,6 +6799,7 @@ renderSide=function(){
     const pinned=i=>Math.floor(i/N)<=1;
     const collide=i=>{let x=X[i],y=Y[i],z=Z[i];
       if(y<.02||y>1.5)return;
+      if(y>=.66&&y<=1.42){for(const sd of[-1,1]){const ax=sd*v3ArmX(y),dx=x-ax,d=Math.hypot(dx,z),r=.072;if(d<r&&d>1e-6){const k=r/d;x=ax+dx*k;z=z*k;}}}
       if(y<.9){for(const cx of [-.09,.09]){const dx=x-cx,d=Math.hypot(dx,z);const r=.115;if(d<r&&d>1e-6){const k=r/d;x=cx+dx*k;z=z*k;}}}
       else{const rr=v3BodyR(y),rx=rr+.025,rz=rr*.66+.025;const e=(x/rx)*(x/rx)+(z/rz)*(z/rz);if(e<1&&e>1e-9){const sc=1/Math.sqrt(e);x*=sc;z*=sc;}}
       X[i]=x;Y[i]=y;Z[i]=z;};
@@ -6797,7 +6818,7 @@ renderSide=function(){
     const ph=physOf(d);const key=d.rev+'|'+V.bend+'|'+ph.name+'|'+ph.rough;
     if(!force&&V.key===key)return;V.key=key;V.rev=d.rev;V.revView=S.view3;
     V.garment.forEach(m=>{V.body.remove(m);m.geometry.dispose();if(m.material.map)m.material.map.dispose();if(m.material.bumpMap)m.material.bumpMap.dispose();if(m.material.roughnessMap)m.material.roughnessMap.dispose();m.material.dispose();});
-    const gcv=v3GarmentCanvas(d);const tex=new THREE.CanvasTexture(gcv);tex.encoding=THREE.sRGBEncoding;const attrTex=gcv._attr?new THREE.CanvasTexture(gcv._attr):null;const prof=window.fab3DActive?fab3DActive(d):null;
+    let gcv=v3GarmentCanvas(d);try{gcv=v3ArmWarp(gcv,d);}catch(e){}const tex=new THREE.CanvasTexture(gcv);tex.encoding=THREE.sRGBEncoding;const attrTex=gcv._attr?new THREE.CanvasTexture(gcv._attr):null;const prof=window.fab3DActive?fab3DActive(d):null;
     const H=1.8,W=H*d.w/d.h;
     /* v161: kumaş malzemesi — tüy ışıltısı (sheen) + dokudan kabartma (bump); parlak kumaşta sheen azalır */
     let bump=null;try{bump=new THREE.CanvasTexture(window.v3BumpCanvas?v3BumpCanvas(tex.image,gcv._attr):tex.image);}catch(e){}
@@ -6807,7 +6828,7 @@ renderSide=function(){
       bumpMap:bump,bumpScale:.03,sheen:shv,sheenRoughness:.7,sheenColor:new THREE.Color(prof&&prof.sheenCol||0xffffff),clearcoat:prof&&prof.coat||0,clearcoatRoughness:.25});
     const f=new THREE.Mesh(v3Drape(v3Bent(W,H,V.bend),W,H,.15),gm);f.position.set(0,.9,.15);f.name='On';
     /* v166: arka yüz ayrı doku — yalnız kumaş; ön detaylar (düğme, yaka çizgisi, aksesuar) sırtta görünmez */
-    let gmB=gm;try{const gb=v3GarmentCanvas(d,true);const tb=new THREE.CanvasTexture(gb);tb.encoding=THREE.sRGBEncoding;gmB=gm.clone();gmB.map=tb;if(gb._attr){const ab=new THREE.CanvasTexture(gb._attr);gmB.roughnessMap=ab;gmB.metalnessMap=ab;}try{gmB.bumpMap=new THREE.CanvasTexture(v3BumpCanvas(gb,gb._attr));}catch(_){}}catch(e){gmB=gm;}
+    let gmB=gm;try{let gb=v3GarmentCanvas(d,true);try{gb=v3ArmWarp(gb,d);}catch(_){}const tb=new THREE.CanvasTexture(gb);tb.encoding=THREE.sRGBEncoding;gmB=gm.clone();gmB.map=tb;if(gb._attr){const ab=new THREE.CanvasTexture(gb._attr);gmB.roughnessMap=ab;gmB.metalnessMap=ab;}try{gmB.bumpMap=new THREE.CanvasTexture(v3BumpCanvas(gb,gb._attr));}catch(_){}}catch(e){gmB=gm;}
     const b=new THREE.Mesh(v3Drape(v3Bent(W,H,V.bend),W,H,.15),gmB);b.position.set(0,.9,-.15);b.rotation.y=Math.PI;b.name='Arka';
     V.body.add(f);V.body.add(b);V.garment=[f,b];v3Draw();
   }
@@ -7718,10 +7739,14 @@ renderSide=function(){_renderSide_spec.apply(this,arguments);try{
   {let _fg=S.fg;try{Object.defineProperty(S,'fg',{configurable:true,enumerable:true,get(){return _fg;},set(v){const o=_fg;_fg=v;if(v&&v!==o){try{window.fgChanged&&fgChanged(v);}catch(e){}}}});}catch(e){}}
   /* kumaş: seçili ürüne (yoksa sayfadaki tüm kıyafetlere) boyamadan uygula */
   const GARCATS=['Kıyafet Türleri','Etek ve Elbise Kesimleri','Kol Modelleri','Yaka Modelleri','Moda Stilleri','Hazır kombin','Kıyafet Yapı Detayları','Paça ve Pantolon Detayları','Kemer ve Bel Detayları','Cep Modelleri'];
-  const fabTargets=()=>{const sel=colorTargets().filter(L=>L.tag==='parca'&&!(L.vec.length===1&&L.vec[0].kind==='poly'&&L.vec[0].fab));if(sel.length)return{Ls:sel,all:false};
-    const all=parcaLayers().filter(L=>{const sp=L.props&&L.props.spec||{};return L.vec.some(q=>q.kind==='tpl')&&Object.keys(sp).some(k=>GARCATS.includes(k));});return{Ls:all,all:true};};
+  /* v167: hazır modeller (vektör kıyafet katmanları) de kumaş ve renk hedefi */
+  const isSwatch=(L)=>L.tag==='parca'&&L.vec&&L.vec.length===1&&L.vec[0].kind==='poly'&&!!L.vec[0].fab;
+  const isVecGarment=(L)=>L.isVec&&L.vec&&L.visible&&!L.locked&&L.tag!=='figure'&&L.tag!=='pano'&&L.tag!=='parca'&&L.vec.some(q=>q.fill||q.fab);
+  window.isVecGarment=isVecGarment;
+  const fabTargets=()=>{const sel=colorTargets().filter(L=>L.tag!=='figure'&&L.tag!=='pano'&&!isSwatch(L)&&(L.tag==='parca'||isVecGarment(L)));if(sel.length)return{Ls:sel,all:false};
+    const all=parcaLayers().filter(L=>{const sp=L.props&&L.props.spec||{};return L.vec.some(q=>q.kind==='tpl')&&Object.keys(sp).some(k=>GARCATS.includes(k));}).concat(D().layers.filter(isVecGarment));return{Ls:all,all:true};};
   window.applyFabricTo=(Ls,fab,phys)=>{const doc=D();const before=Ls.map(L=>JSON.stringify(L.vec)),pb=Ls.map(L=>L.props&&L.props.phys);
-    Ls.forEach(L=>{L.vec.forEach(q=>{if(q.kind==='tpl'){q.fillAll={fab:JSON.parse(JSON.stringify(fab))};q.paint=[];}});if(phys){L.props=L.props||{};L.props.phys=phys;}vecRender(L);});
+    Ls.forEach(L=>{L.vec.forEach(q=>{if(q.kind==='tpl'){q.fillAll={fab:JSON.parse(JSON.stringify(fab))};q.paint=[];}else if(q.fill||q.fab){q.fab=JSON.parse(JSON.stringify(fab));q.fill=null;}});if(phys){L.props=L.props||{};L.props.phys=phys;}vecRender(L);});
     const after=Ls.map(L=>JSON.stringify(L.vec));structEntry(doc,()=>{Ls.forEach((L,i)=>{L.vec=JSON.parse(before[i]);if(L.props)L.props.phys=pb[i];vecRender(L);});invalidate();},()=>{Ls.forEach((L,i)=>{L.vec=JSON.parse(after[i]);if(phys)L.props.phys=phys;vecRender(L);});invalidate();},0);invalidate();markDirty();};
   /* v166: kumaş kimliğinden en yakın 3B fizik ön ayarı (Kumaş sekmesindeki tüm kumaşlar için) */
   const PHYS_RE=[[/denim/,'Denim_Raw'],[/saten|satin|x_saten/,'Silk_Duchess_Satin'],[/ipek|silk/,'Silk_Charmeuse'],[/sifon|chiffon|tul|organze|ag|altigen|seffaf/,'Silk_Chiffon'],[/kadife|velvet|fitilli/,'Cotton_Stretch_Velvet'],
